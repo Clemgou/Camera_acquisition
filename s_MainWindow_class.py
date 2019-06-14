@@ -15,8 +15,11 @@ from PyQt5.QtGui     import QIcon, QFont
 from PyQt5.QtCore    import QDate, QTime, QDateTime, Qt
 
 
+
+from s_LogDisplay_class               import LogDisplay
+from s_Preview_class                  import Preview
+
 import numpy as np
-import pyqtgraph as pqtg
 import os
 
 ################################################################################################ 
@@ -55,7 +58,9 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         # --- Parent Widget : central widget --- #
         self.initMainWidget()
         self.initTabLayout()
-        self.insertMainWidget()
+        # --- make  log display tab --- #
+        self.log        = LogDisplay()
+        self.insertNewTabLogDisplay(self.log)
 
     def initWindowMenu(self):
         '''
@@ -63,12 +68,14 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         '''
         self.menubar = self.menuBar() # we define an attribute, menubar, which derives from the method menuBar() that comes from the QMainWindow parent object.
         # --- set the main menus --- #
-        self.filemenu       = self.menubar.addMenu('&File')
-        self.structuresmenu = self.menubar.addMenu('&Structures')
+        self.filemenu     = self.menubar.addMenu('&File')
+        self.setupmenu    = self.menubar.addMenu('&Setups')
+        self.toolsmenu    = self.menubar.addMenu('&Tools')
         self.statusBar()
         # --- set the actions in the different menues --- #
-        self.newStructureItem()
-        self.newFilemenuItem()
+        self.initFileMenu()
+        self.initSetupMenu()
+        self.initToolsMenu()
         #self.getFile()
 
     def initMainWidget(self):
@@ -114,25 +121,34 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
 
         self.filemenu.addAction(openFile)
 
-    def newFilemenuItem(self):
+    def initFileMenu(self):
         # --- Exit application --- #
         closeapp = QAction('&Exit', self) # QAction(QIcon('incon.png'), '&Exit', self)
         closeapp.triggered.connect(self.closeMainWindow)
         self.filemenu.addAction( '------' )
         self.filemenu.addAction(closeapp)
 
-    def newStructureItem(self):
+    def initSetupMenu(self):
         '''
         Make a new tab window with the display of the chosen structure (SWG, BS, ...).
         '''
-        # --- Main Tab --- #
-        openNewtab  = QAction('Main', self)
-        openNewtab.triggered.connect(self.insertMainWidget)
-        self.structuresmenu.addAction(openNewtab)
+        # --- Preview --- #
+        openNewtab  = QAction('Preview', self)
+        openNewtab.triggered.connect(self.insertNewTabPreview)
+        self.setupmenu.addAction(openNewtab)
         # --- Lissajous plot tab --- #
         openNewtab  = QAction('Lissajous (Li)', self)
         openNewtab.triggered.connect(self.insertNewTabLissajousPlot)
-        self.structuresmenu.addAction(openNewtab)
+        self.setupmenu.addAction(openNewtab)
+
+    def initToolsMenu(self):
+        '''
+        Make a new tab window with the display of the chosen structure (SWG, BS, ...).
+        '''
+        # --- Application diagram --- #
+        openNewtab  = QAction('App diagram', self)
+        openNewtab.triggered.connect(self.insertNewTabAppDiagram)
+        self.toolsmenu.addAction(openNewtab)
 
     def showDialog(self):
         '''
@@ -148,12 +164,26 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
     def closeMainWindow(self):
         self.close()
 
-    def insertMainWidget(self):
+    def insertNewTabLogDisplay(self, log_objct):
+        newtabindex = self.centraltab.addTab(log_objct,"Log")
+        currentTbaBar = self.centraltab.tabBar()
+        currentTbaBar.setTabButton(newtabindex, PyQt5.QtWidgets.QTabBar.RightSide, QLabel('')) # hide the close button
+        self.centraltab.setCurrentIndex( newtabindex )
+
+    def insertNewTabMainWidget(self):
+        newtabindex = self.centraltab.addTab( self.centralwidget, "Main" ) # also: addTab(QWidget , QIcon , QString )
+        self.centraltab.setCurrentIndex( newtabindex )
+
+    def insertNewTabPreview(self):
+        newtabindex = self.centraltab.addTab( Preview(log=self.log), "Preview" ) # also: addTab(QWidget , QIcon , QString )
+        self.centraltab.setCurrentIndex( newtabindex )
+
+    def insertNewTabAppDiagram(self):
         newtabindex = self.centraltab.addTab( self.centralwidget, "Main" ) # also: addTab(QWidget , QIcon , QString )
         self.centraltab.setCurrentIndex( newtabindex )
 
     def insertNewTabLissajousPlot(self):
-        newtabindex = self.centraltab.addTab( StraightWaveGuide(self.simuobjct), "Lissa" ) # also: addTab(QWidget , QIcon , QString )
+        newtabindex = self.centraltab.addTab( self.centralwidget, "Lissa" ) # also: addTab(QWidget , QIcon , QString )
         self.centraltab.setCurrentIndex( newtabindex )
 
 ################################################################################################
