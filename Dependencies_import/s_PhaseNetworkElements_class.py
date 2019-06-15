@@ -27,7 +27,7 @@ from PyQt5.QtGui     import QPainter
 
 
 from s_LogDisplay_class               import LogDisplay
-from s_ToolObjects_class              import GaussianFit, SpanObject
+from s_ToolObjects_class              import GaussianFit, SpanObject, PeakPlot
 from s_CameraDisplay_class            import CameraDisplay
 from Simu_camera                      import SimuCamera
 
@@ -73,14 +73,16 @@ class PhaseNetworkElements(QWidget):
         self.fittingactivate.stateChanged.connect(self.acceptOrNot)
         # --- init frames --- #
         self.initView()
-        self.initVertHistogram()
         self.initParameterZone()
+        self.initVertHistogram()
+        self.initMultiplotPeak()
         # --- layout --- #
         vsplitter      = QSplitter(PyQt5.QtCore.Qt.Vertical)
         vsplitter.addWidget( self.camera_view )
+        vsplitter.addWidget( self.paramFrame )
         self.splitter.addWidget( vsplitter )
         self.splitter.addWidget( self.histogFrame )
-        self.splitter.addWidget( self.paramFrame )
+        self.splitter.addWidget( self.multiplotFrame )
         self.layout.addWidget( self.splitter )
         self.setLayout(self.layout)
         # ---  --- #
@@ -99,28 +101,30 @@ class PhaseNetworkElements(QWidget):
         self.normalise_hist.addItem('raw')
         self.normalise_hist.addItem('normalise')
         self.normalise_hist.setCurrentIndex(1)
-        self.nbrpeak = QSpinBox()
+        self.nbrpeak        = QSpinBox()
         self.nbrpeak.setRange(1, 20)
         self.nbrpeak.setValue(2)
-        self.histrealtime = QCheckBox()
+        self.histrealtime   = QCheckBox()
         self.histrealtime.setTristate(False)
         self.histrealtime.setCheckState(2)
         self.setLinkToCameraTimer()
-        self.button_addspan = QPushButton('add new span')
+        self.spanNumber     = QSpinBox()#QPushButton('add new span')
+        self.spanNumber.setMaximum(20)
+        self.spanNumber.setValue(0)
         # --- connections --- #
         self.normalise_hist.currentIndexChanged.connect(self.setModeFitting)
         self.nbrpeak.valueChanged.connect(self.updatePlots)
         self.histrealtime.stateChanged.connect( self.setLinkToCameraTimer )
-        self.button_addspan.clicked.connect( self.addSpan )
+        self.spanNumber.valueChanged.connect( self.makeSpans )
         # --- make layout --- #
         grid    = QGridLayout()
-        grid.addWidget(QLabel('Mode for fitting: '), 0,0)
-        grid.addWidget( self.normalise_hist        , 0,1)
+        grid.addWidget(QLabel('Mode for fitting: ')      , 0,0)
+        grid.addWidget( self.normalise_hist              , 0,1)
         grid.addWidget(QLabel('Number maximum of peaks:'), 1,0)
         grid.addWidget( self.nbrpeak                     , 1,1)
         grid.addWidget(QLabel('Continuous mode: ')       , 2,0)
-        grid.addWidget( self.histrealtime                 , 2,1)
-        grid.addWidget( self.button_addspan                   , 3,0 , 1,2)
+        grid.addWidget( self.histrealtime                , 2,1)
+        grid.addWidget( self.spanNumber                  , 3,0 , 1,2)
         self.paramFrame.setLayout( grid )
 
     def initVertHistogram(self):
@@ -136,10 +140,6 @@ class PhaseNetworkElements(QWidget):
         # --- measured data --- #
         self.data_hist = pg.PlotDataItem()
         self.plot_hist.addItem(self.data_hist)
-        # --- threshold line object --- #
-        self.threshold = pg.InfiniteLine(pos=1., angle=0, movable=True)
-        self.plot_hist.addItem( self.threshold )
-        #self.threshold.sigPositionChangeFinished.connect(  )
         # --- default --- #
         self.plot_hist.setXRange(0, 255)
         if self.normalise:
@@ -152,15 +152,50 @@ class PhaseNetworkElements(QWidget):
 
     def addSpan(self):
         N = len( list(self.dicspan.keys()) )
-        newspan = SpanObject()
+        newspan = SpanObject(name='span_{}'.format(N+1), pos_init=N*50 +1)
         self.dicspan[N+1] = newspan
         # ---  --- #
-        self.plot_hist.addItem( newspan.bound1 )
-        self.plot_hist.addItem( newspan.bound2 )
-        self.plot_hist.addItem( newspan.fill  )
+        self.plot_hist.addItem( newspan.span )
+        # ---  --- #
+        self.addPlot(newspan)
 
-    def initMaximaTimeEvolution(self):
-        return None
+    def removeSpan(self):
+        N = len( list(self.dicspan.keys()) )
+        if N == 0:
+            return None
+        # ---  --- #
+        self.removePlot( self.dicspan[N] )
+        # ---  --- #
+        self.plot_hist.removeItem( self.dicspan[N].span )
+        self.dicspan[N].setParent(None)
+        del self.dicspan[N]
+
+    def makeSpans(self):
+        n = self.spanNumber.value()
+        n_current = len(list(self.dicspan.keys()))
+        if   n == n_current:
+            pass
+        elif n > n_current:
+            for i in range(n-n_current):
+                self.addSpan()
+        elif n < n_current:
+            for i in range(n_current-n):
+                self.removeSpan()
+
+    def initMultiplotPeak(self):
+        self.multi_plot = pg.GraphicsLayoutWidget()
+        self.samplingtime = QSpinBox()
+        self.samplingtime.setRange(1, 60)
+        self.dicmultiplot = {}
+        # ---  --- #
+        self.spanNumber.valueChanged.connect( self.updateMultiplots )
+        # --- make layout --- #
+        self.multiplotFrame = QFrame()
+        layout = QGridLayout()
+        layout.addWidget(QLabel('Sampling duration (s): ') , 0,0)
+        layout.addWidget(self.samplingtime                 , 0,1)
+        layout.addWidget(self.multi_plot                   , 1,0 , 1,2)
+        self.multiplotFrame.setLayout( layout )
 
     def setLinkToCameraTimer(self):
         if   self.histrealtime.checkState() == 0:
@@ -255,6 +290,33 @@ class PhaseNetworkElements(QWidget):
             ydata = ydata/np.max(ydata)
         # --- plot data --- #
         self.data_hist.setData( ydata, np.arange(len(ydata)) )
+        # ---  --- #
+        self.updateMultiplots()
+
+    def updateMultiplots(self):
+        for key in self.dicmultiplot:
+            self.dicmultiplot[key].setFullData( self.data_hist.yData )
+            self.dicmultiplot[key].setLengthMax( self.samplingtime.value()*self.camera_view.fps )
+            self.dicmultiplot[key].updatePlot()
+
+    def addPlot(self, span):
+        N = len( list(self.dicspan.keys()) )
+        newplot = PeakPlot(name='plot_{}'.format(span.name), span=span)
+        self.dicmultiplot[newplot.name] = newplot
+        # ---  --- #
+        span.span.sigRegionChangeFinished.connect( self.updateMultiplots )
+        # ---  --- #t
+        self.multi_plot.nextRow()
+        self.multi_plot.addItem( newplot )
+
+    def removePlot(self, span):
+        N = len( list(self.dicspan.keys()) )
+        plot_to_remove = self.dicmultiplot['plot_{}'.format(span.name)]
+        self.multi_plot.removeItem( plot_to_remove )
+        plot_to_remove.setParent(None)
+        del self.dicmultiplot['plot_{}'.format(span.name)]
+        # ---  --- #
+        span.setAssigned(False)
 
     def clearGaussianFits(self):
         KEYS = list(self.gaussian_plots.keys())

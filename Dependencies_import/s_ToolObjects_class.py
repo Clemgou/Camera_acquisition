@@ -138,44 +138,85 @@ class GaussianFit():
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 class SpanObject(pg.GraphicsWidget):
-    def __init__(self, alignement='horizontal', color='y', clickable=True):
+    def __init__(self, name='span_', orientation='horizontal', color='y', clickable=True, alpha=.2, pos_init=0, init_width=40, assigned=False):
         super().__init__()
         # ---  --- #
-        self.aligmt = alignement
+        self.name   = name
+        self.orient = orientation
         self.color  = pg.mkColor(color)
         self.clickbl= clickable
+        self.alpha  = alpha * 255
+        self.isAssigned = assigned
         # ---  --- #
-        self.bound1 = pg.InfiniteLine()
-        self.bound2 = pg.InfiniteLine()
-        self.fill   = pg.FillBetweenItem()
-        self.boundarybox = [[0,1],[1,1]]
-        self.bound1.setMovable(True)
-        self.bound2.setMovable(True)
+        if   self.orient=='horizontal':
+            self.span = pg.LinearRegionItem(orientation=pg.LinearRegionItem.Horizontal)
+        elif self.orient=='vertical':
+            self.span = pg.LinearRegionItem(orientation=pg.LinearRegionItem.Vertical)
         # ---  --- #
-        if   self.aligmt=='horizontal':
-            self.bound1.setAngle(0)
-            self.bound2.setAngle(0)
-        elif self.aligmt=='vertical':
-            self.bound1.setAngle(90)
-            self.bound2.setAngle(90)
-        # ---  --- #
-        self.makeFilling()
-        self.viewbox = pg.ViewBox()
-        self.viewbox.addItem(self.bound1)
-        self.viewbox.addItem(self.bound2)
-        #self.viewbox.addItem(self.fill)
+        self.color.setAlpha(self.alpha)
+        self.span.setBrush( self.color )
+        self.span.setMovable(True)
+        self.span.setRegion( [pos_init+0 , pos_init+init_width] )
 
-    def makeFilling(self):
-        line1 = pg.PlotCurveItem()
-        line1.setData(x=[0,0] , y=[0,1])
-        line2 = pg.PlotCurveItem()
-        line2.setData(x=[1,1] , y=[0,1])
-        self.fill.setCurves(curve1=line1, curve2=line2)
-        self.color.setAlpha(20)
-        self.fill.setBrush( self.color )
+    def setAssigned(self, bool_):
+        self.isAssigned = bool_
 
-    def moveSpan(self):
-        return None
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+class PeakPlot(pg.PlotItem):
+    def __init__(self, name='peakplot_', clickable=True, span=None, data=[], color='r', len_max=1):
+        super().__init__()
+        # ---  --- #
+        self.plot = pg.PlotDataItem()
+        self.peakdata = None
+        self.name = name
+        self.data = data
+        self.span = span
+        self.color= pg.mkColor(color)
+        self.lengthmax = len_max
+        # ---  --- #
+        self.addItem( self.plot )
+        self.plot.setPen( self.color )
+        self.showGrid(y=True)
+        # ---  --- #
+        if  self.span != None:
+            self.span.setAssigned(True)
+        else:
+            self.span = None
+
+    def setFullData(self, data ):
+        self.data = data
+
+    def setLengthMax(self, newlen):
+        self.lengthmax = newlen
+
+    def updatePlot(self):
+        region = self.span.span.getRegion()
+        m , M  = int(np.min(region)), int(np.max(region))
+        if type(self.data) != type(None):
+            try:
+                self.addDataElement( np.max(self.data[m:M]) )
+            except:
+                print('Error: in updatePlot for object PeakPlot.')
+                print('region:', region, m, M)
+                print( self.data[m:M] )
+                return None
+
+    def addDataElement(self, y):
+        if type(self.peakdata) == type(None):
+            self.peakdata = [y]
+        else:
+            self.peakdata.append(y)
+        if len(self.peakdata) > self.lengthmax:
+            for i in range(len(self.peakdata) - self.lengthmax):
+                self.peakdata.pop(0)
+        # ---  -- #
+        try:
+            ydata = np.array(self.peakdata)
+            ydata = ydata/np.max(ydata)
+            self.plot.setData( ydata )
+        except:
+            print('YDATA: ',ydata)
 
 ################################################################################################
 # CODE
