@@ -78,12 +78,16 @@ class SimuCamera:
     def close_camera(self):
         return None
 
-
-
+def rgb2gray(rgb):
+    r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
+    gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+    gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+    return gray
 
 if __name__ == '__main__':
     print('OpenCV 2 version: ',cv2.__version__)
     print('STARTING')
-    camera = SimuCamera(0)
-    print(camera.get_frame().shape)
+    #camera = SimuCamera(0)
+    #print(camera.get_frame().shape)
+    imgJetCmapToGrayscale()
     print('FINISHED')

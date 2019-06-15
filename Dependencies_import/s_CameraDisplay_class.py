@@ -18,7 +18,7 @@ import pyqtgraph as pg
 
 import PyQt5
 from PyQt5.QtWidgets import QWidget, QFrame, QApplication
-from PyQt5.QtWidgets import QVBoxLayout,QHBoxLayout,QSplitter
+from PyQt5.QtWidgets import QVBoxLayout,QHBoxLayout,QSplitter,QGridLayout
 from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QSpinBox
 from PyQt5.QtCore    import Qt, QThread, QTimer, QObject, pyqtSignal, pyqtSlot, QRect
 from PyQt5.QtGui     import QPainter
@@ -33,7 +33,7 @@ from Simu_camera                      import SimuCamera
 # FUNCTIONS
 #########################################################################################################################
 
-class Preview(QWidget):
+class CameraDisplay(QWidget):
     def __init__(self, camera=None, log=None, fps=10.):
         super().__init__()
         # ---  --- #
@@ -51,6 +51,7 @@ class Preview(QWidget):
         self.timer     = pg.QtCore.QTimer() #QTimer()# pg.QtCore.QTimer()
         self.qlabl_max = QLabel()
         self.isOn      = False
+        self.frame     = None
         # --- color acuisition --- #
         self.initColorDic()
         # ---  --- #
@@ -61,8 +62,6 @@ class Preview(QWidget):
         self.layout      = QVBoxLayout(self)
         self.initView()
         # --- button widget --- #
-        self.button_acquire    = QPushButton('Acquire')
-        self.button_acquire.setStyleSheet("background-color: orange")
         self.button_startstop = QPushButton('Start/Stop')
         self.button_startstop.setStyleSheet("background-color: red")
         # ---  --- #
@@ -72,21 +71,17 @@ class Preview(QWidget):
         # --- connections --- #
         self.button_startstop.clicked.connect(self.startStop_continuous_view)
         self.fps_input.valueChanged.connect(self.setFPS)
-        self.button_acquire.clicked.connect(self.acquireFrame)
         # --- layout --- #
-        hlayout2 = QHBoxLayout()
-        hlayout2.addWidget( QLabel('fps :') )
-        hlayout2.addWidget( self.fps_input )
-        hlayout2.addWidget( QLabel('value max:') )
-        hlayout2.addWidget( self.qlabl_max )
-        self.layout.addWidget( self.button_startstop )
-        self.layout.addLayout(hlayout2)
+        grid = QGridLayout()
+        grid.addWidget( self.button_startstop, 0,0 , 1,2)
+        grid.addWidget( QLabel('fps :')      , 0,2)
+        grid.addWidget( self.fps_input       , 0,3)
+        grid.addWidget( QLabel('value max:') , 0,5)
+        grid.addWidget( self.qlabl_max       , 0,6)
+        self.layout.addLayout(grid)
         self.layout.addWidget(self.image_view)
-        self.layout.addWidget(self.view_layout)
-        self.layout.addWidget(self.button_acquire)
         self.setLayout(self.layout)
         # ---  --- #
-        self.update_timer = QTimer()
 
     def initColorDic(self):
         self.colordic = {}
@@ -102,30 +97,14 @@ class Preview(QWidget):
         self.colordic['plasma'] = generatePgColormap('plasma')
 
     def initView(self):
-        # --- image  widget --- #
         self.image_view     = pg.ImageView()
-        # --- plot layout --- #
-        self.view_layout    = pg.GraphicsLayoutWidget()
-        self.plot_hist      = self.view_layout.addPlot()
-        self.plot_hist.setXLink( self.image_view.getView() )
-        if self.normalise_hist:
-            self.plot_hist.setYRange(0, 1)
-        else:
-            self.plot_hist.setYRange(0, 255)
-        # ---  --- #
-        self.data_hist = pg.PlotDataItem()
-        self.plot_hist.addItem(self.data_hist)
         # ---  --- #
         self.image_view.setColorMap(self.colordic[self.cmap])
         self.image_view.setLevels(0,255)
-        self.hidePlotButtons()
-        self.image_view.getHistogramWidget().item.setHistogramRange(0,255) #not working when update
+        self.image_view.getHistogramWidget().item.setHistogramRange(0,255)
         # ---  --- #
-        self.view_layout.setMinimumWidth(800)
-        self.view_layout.setMinimumHeight(200)
         self.image_view.setMinimumWidth(800)
-        self.image_view.setMinimumHeight(400)
-        # ---  --- #
+        self.image_view.setMinimumHeight(600)
 
     def hideHistogram(self):
         self.image_view.ui.histogram.hide()
@@ -140,25 +119,10 @@ class Preview(QWidget):
         self.timer.setInterval(1e3/self.fps)
 
     @pyqtSlot()
-    def update_image(self):
-        frame = self.camera.get_frame(mode='Grey')
-        self.updatePlotHistogram(frame)
-        self.image_view.setImage(frame.T, autoHistogramRange=False, autoLevels=False)
-        self.qlabl_max.setText( str(np.max(frame)) )
-
-    def updatePlotHistogram(self, frame):
-        bckgrnd = np.mean(frame)
-        frame = frame-bckgrnd
-        ydata = np.sum(frame,axis=0)/frame.shape[0]
-        ydata += np.max([0, np.min(ydata)])
-        if self.normalise_hist:
-            ydata = ydata/np.max(ydata)
-        self.data_hist.setData(ydata)
-
-    def acquireFrame(self):
-        frame = self.camera.last_frame
-        plt.imshow(frame, cmap=self.cmap)
-        plt.show()
+    def update_frame(self):
+        self.frame = self.camera.get_frame(mode='Grey')
+        self.image_view.setImage(self.frame.T, autoHistogramRange=False, autoLevels=False)
+        self.qlabl_max.setText( str(np.max(self.frame)) )
 
     def startStop_continuous_view(self):
         if  self.isOn:
@@ -201,7 +165,7 @@ class Preview(QWidget):
 
     def start_continuous_view_qtimer(self):
         # ---  --- #
-        self.timer.timeout.connect(self.update_image)
+        self.timer.timeout.connect(self.update_frame)
         self.timer.start(1e3/self.fps) #ms
 
     def stop_continuous_view_qtimer(self):
@@ -217,7 +181,7 @@ if __name__ == '__main__':
     camera.__str__()
 
     app = QApplication([])
-    start_window = Preview(camera)
+    start_window = CameraDisplay(camera)
     start_window.show()
     app.exit(app.exec_())
     print('Close camera')

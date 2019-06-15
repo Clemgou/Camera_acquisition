@@ -10,6 +10,8 @@ import pyqtgraph as pg
 import scipy
 from scipy.optimize import curve_fit
 
+
+
 ################################################################################################
 # FUNCTIONS
 ################################################################################################
@@ -132,6 +134,48 @@ class GaussianFit():
 
     def setThreshold(self, thresh):
         self.threshold = thresh
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+class SpanObject(pg.GraphicsWidget):
+    def __init__(self, alignement='horizontal', color='y', clickable=True):
+        super().__init__()
+        # ---  --- #
+        self.aligmt = alignement
+        self.color  = pg.mkColor(color)
+        self.clickbl= clickable
+        # ---  --- #
+        self.bound1 = pg.InfiniteLine()
+        self.bound2 = pg.InfiniteLine()
+        self.fill   = pg.FillBetweenItem()
+        self.boundarybox = [[0,1],[1,1]]
+        self.bound1.setMovable(True)
+        self.bound2.setMovable(True)
+        # ---  --- #
+        if   self.aligmt=='horizontal':
+            self.bound1.setAngle(0)
+            self.bound2.setAngle(0)
+        elif self.aligmt=='vertical':
+            self.bound1.setAngle(90)
+            self.bound2.setAngle(90)
+        # ---  --- #
+        self.makeFilling()
+        self.viewbox = pg.ViewBox()
+        self.viewbox.addItem(self.bound1)
+        self.viewbox.addItem(self.bound2)
+        #self.viewbox.addItem(self.fill)
+
+    def makeFilling(self):
+        line1 = pg.PlotCurveItem()
+        line1.setData(x=[0,0] , y=[0,1])
+        line2 = pg.PlotCurveItem()
+        line2.setData(x=[1,1] , y=[0,1])
+        self.fill.setCurves(curve1=line1, curve2=line2)
+        self.color.setAlpha(20)
+        self.fill.setBrush( self.color )
+
+    def moveSpan(self):
+        return None
 
 ################################################################################################
 # CODE

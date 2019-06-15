@@ -18,6 +18,9 @@ from PyQt5.QtCore    import QDate, QTime, QDateTime, Qt
 
 from s_LogDisplay_class               import LogDisplay
 from s_Preview_class                  import Preview
+from s_DCMeasurement_class            import DCMeasurement
+
+from Simu_camera import *
 
 import numpy as np
 import os
@@ -25,6 +28,41 @@ import os
 ################################################################################################ 
 # FUNCTIONS
 ################################################################################################
+
+class CameraManagementWindow(QMainWindow):
+    def __init__(self, camera=None):
+        super().__init__()
+        self.camera        = camera
+        self.layout        = QGridLayout()
+        self.centralwidget = QWidget()
+        # ---  --- #
+        self.centralwidget.setLayout( self.layout )
+        self.setCentralWidget(self.centralwidget)
+        # ---  --- #
+        self.initUI()
+
+    def initUI(self):
+        self.cameraname = QLabel()
+        self.open_state = QLabel()
+        # --- make layout --- #
+        self.layout.addWidget( QLabel('Just to display something') )
+
+    def displayCameraProperties(self):
+        opened       = self.camera.isOpened()
+        pos          = self.camera.get(cv2.CAP_PROP_POS_MSEC)
+        frame_width  = self.camera.get(cv2.CAP_PROP_FRAME_WIDTH)
+        frame_height = self.camera.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        fps          = self.camera.get(cv2.CAP_PROP_FPS)
+        format_frame_data = self.camera.get(cv2.CAP_PROP_FORMAT)
+        brightness   = self.camera.get(cv2.CAP_PROP_BRIGHTNESS)
+        contraste    = self.camera.get(cv2.CAP_PROP_CONTRAST)
+        saturation   = self.camera.get(cv2.CAP_PROP_SATURATION)
+        color_hue    = self.camera.get(cv2.CAP_PROP_HUE)
+        exposure     = self.camera.get(cv2.CAP_PROP_EXPOSURE)
+        gain         = self.camera.get(cv2.CAP_PROP_GAIN)
+        conversion  = self.camera.get(cv2.CAP_PROP_CONVERT_RGB)
+
+
 
 class MainWindow(QMainWindow): # inherits from the QMainWindow class
     def __init__(self):
@@ -61,6 +99,9 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         # --- make  log display tab --- #
         self.log        = LogDisplay()
         self.insertNewTabLogDisplay(self.log)
+        # --- main attributes --- #
+        self.camera = SimuCamera(0)
+        self.cameraManag = CameraManagementWindow()
 
     def initWindowMenu(self):
         '''
@@ -71,11 +112,13 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         self.filemenu     = self.menubar.addMenu('&File')
         self.setupmenu    = self.menubar.addMenu('&Setups')
         self.toolsmenu    = self.menubar.addMenu('&Tools')
+        self.cameramenu   = self.menubar.addMenu('&Camera')
         self.statusBar()
         # --- set the actions in the different menues --- #
         self.initFileMenu()
         self.initSetupMenu()
         self.initToolsMenu()
+        self.initCameraMenu()
         #self.getFile()
 
     def initMainWidget(self):
@@ -136,6 +179,10 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         openNewtab  = QAction('Preview', self)
         openNewtab.triggered.connect(self.insertNewTabPreview)
         self.setupmenu.addAction(openNewtab)
+        # --- DC plot tab --- #
+        openNewtab  = QAction('Peak comparison (PkComp)', self)
+        openNewtab.triggered.connect(self.insertNewTabPeakComparison)
+        self.setupmenu.addAction(openNewtab)
         # --- Lissajous plot tab --- #
         openNewtab  = QAction('Lissajous (Li)', self)
         openNewtab.triggered.connect(self.insertNewTabLissajousPlot)
@@ -150,6 +197,18 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         openNewtab.triggered.connect(self.insertNewTabAppDiagram)
         self.toolsmenu.addAction(openNewtab)
 
+    def initCameraMenu(self):
+        '''
+        Make a new tab window with the display of the chosen structure (SWG, BS, ...).
+        '''
+        # --- Camera tab --- #
+        openNewtab  = QAction('&Camera setup', self)
+        openNewtab.triggered.connect(self.cameraManagementWindow)
+        self.cameramenu.addAction(openNewtab)
+
+    def cameraManagementWindow(self):
+        self.cameraManag.show()
+
     def showDialog(self):
         '''
         Generate the window where we can browse for the wanted text file.
@@ -160,9 +219,6 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
             with f:
                 data = f.read()
                 self.textEdit.setText(data)
-
-    def closeMainWindow(self):
-        self.close()
 
     def insertNewTabLogDisplay(self, log_objct):
         newtabindex = self.centraltab.addTab(log_objct,"Log")
@@ -175,16 +231,23 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         self.centraltab.setCurrentIndex( newtabindex )
 
     def insertNewTabPreview(self):
-        newtabindex = self.centraltab.addTab( Preview(log=self.log), "Preview" ) # also: addTab(QWidget , QIcon , QString )
+        newtabindex = self.centraltab.addTab( Preview(camera=self.camera, log=self.log), "Preview" ) # also: addTab(QWidget , QIcon , QString )
         self.centraltab.setCurrentIndex( newtabindex )
 
     def insertNewTabAppDiagram(self):
         newtabindex = self.centraltab.addTab( self.centralwidget, "Main" ) # also: addTab(QWidget , QIcon , QString )
         self.centraltab.setCurrentIndex( newtabindex )
 
+    def insertNewTabPeakComparison(self):
+        newtabindex = self.centraltab.addTab( DCMeasurement(camera=self.camera, log=self.log), "PkComp" ) # also: addTab(QWidget , QIcon , QString )
+        self.centraltab.setCurrentIndex( newtabindex )
+
     def insertNewTabLissajousPlot(self):
         newtabindex = self.centraltab.addTab( self.centralwidget, "Lissa" ) # also: addTab(QWidget , QIcon , QString )
         self.centraltab.setCurrentIndex( newtabindex )
+
+    def closeMainWindow(self):
+        self.close()
 
 ################################################################################################
 # CODE
