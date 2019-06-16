@@ -38,6 +38,7 @@ from Simu_camera                      import SimuCamera
 class PhaseNetworkElements(QWidget):
     def __init__(self, camera=None, log=None, fps=10.):
         super().__init__()
+        self.feedback = False
         # ---  --- #
         if log != None:
             self.log = log
@@ -50,11 +51,9 @@ class PhaseNetworkElements(QWidget):
         self.normalise = True
         self.sepration = ' '
         self.param_peak= [] # a N x 3 array where each line is [x0, a, b] the parameter of the fit, N being the number of peaks.
-        self.fittingtimer = pg.QtCore.QTimer()
         self.dicspan   = {}
         # --- main attriute --- #
         self.camera    = camera
-        self.timer     = pg.QtCore.QTimer() #QTimer()# pg.QtCore.QTimer()
         self.qlabl_max = QLabel()
         self.dataframe = np.zeros([10,10])
         # ---  --- #
@@ -76,6 +75,9 @@ class PhaseNetworkElements(QWidget):
         self.initParameterZone()
         self.initVertHistogram()
         self.initMultiplotPeak()
+        self.initLissajousPlot()
+        # --- default --- #
+        self.updatePtNbrLabel()
         # --- layout --- #
         vsplitter      = QSplitter(PyQt5.QtCore.Qt.Vertical)
         vsplitter.addWidget( self.camera_view )
@@ -83,10 +85,13 @@ class PhaseNetworkElements(QWidget):
         self.splitter.addWidget( vsplitter )
         self.splitter.addWidget( self.histogFrame )
         self.splitter.addWidget( self.multiplotFrame )
+        vsplitter      = QSplitter(PyQt5.QtCore.Qt.Vertical)
+        vsplitter.addWidget( self.lissajousFrame )
+        vsplitter.addWidget( QFrame() )
+        self.splitter.addWidget( vsplitter )
         self.layout.addWidget( self.splitter )
         self.setLayout(self.layout)
         # ---  --- #
-        self.fittingtimer.start()
 
     def initView(self):
         self.camera_view     = CameraDisplay(camera=self.camera, log=self.log)
@@ -96,35 +101,37 @@ class PhaseNetworkElements(QWidget):
 
     def initParameterZone(self):
         self.paramFrame = QFrame()
+        self.paramFrame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
+        self.paramFrame.setLineWidth(3)
+        self.paramFrame.setMidLineWidth(1)
         # --- widgets --- #
         self.normalise_hist = QComboBox()
         self.normalise_hist.addItem('raw')
         self.normalise_hist.addItem('normalise')
         self.normalise_hist.setCurrentIndex(1)
-        self.nbrpeak        = QSpinBox()
-        self.nbrpeak.setRange(1, 20)
-        self.nbrpeak.setValue(2)
         self.histrealtime   = QCheckBox()
         self.histrealtime.setTristate(False)
         self.histrealtime.setCheckState(2)
         self.setLinkToCameraTimer()
-        self.spanNumber     = QSpinBox()#QPushButton('add new span')
-        self.spanNumber.setMaximum(20)
-        self.spanNumber.setValue(0)
+        self.button_save   = QPushButton('Save Plot data')
+        self.savefile      = QFileDialog(self)
+        self.savefile_name = QLabel('Select a file')
+        self.savefile_name.setWordWrap(True)
+        self.choosedirectory  = QPushButton('&New file')
         # --- connections --- #
+        self.choosedirectory.clicked.connect(self.setNewSaveFile)
+        self.button_save.clicked.connect( self.saveDataFromMultiplot )
         self.normalise_hist.currentIndexChanged.connect(self.setModeFitting)
-        self.nbrpeak.valueChanged.connect(self.updatePlots)
         self.histrealtime.stateChanged.connect( self.setLinkToCameraTimer )
-        self.spanNumber.valueChanged.connect( self.makeSpans )
         # --- make layout --- #
         grid    = QGridLayout()
         grid.addWidget(QLabel('Mode for fitting: ')      , 0,0)
         grid.addWidget( self.normalise_hist              , 0,1)
-        grid.addWidget(QLabel('Number maximum of peaks:'), 1,0)
-        grid.addWidget( self.nbrpeak                     , 1,1)
-        grid.addWidget(QLabel('Continuous mode: ')       , 2,0)
+        grid.addWidget(QLabel('Histogram in continuous mode: ')       , 2,0)
         grid.addWidget( self.histrealtime                , 2,1)
-        grid.addWidget( self.spanNumber                  , 3,0 , 1,2)
+        grid.addWidget( self.choosedirectory  , 3,0)
+        grid.addWidget(self.savefile_name     , 3,1)
+        grid.addWidget( self.button_save      , 4,0 , 1,2)
         self.paramFrame.setLayout( grid )
 
     def initVertHistogram(self):
@@ -144,18 +151,147 @@ class PhaseNetworkElements(QWidget):
         self.plot_hist.setXRange(0, 255)
         if self.normalise:
             self.plot_hist.setXRange(0, 1)
+        # --- widgets --- #
+        self.spanNumber     = QSpinBox()#QPushButton('add new span')
+        self.spanNumber.setMaximum(20)
+        self.spanNumber.setValue(0)
+        self.spanNumber.valueChanged.connect( self.makeSpans )
         # --- make layout --- #
         self.histogFrame = QFrame()
-        vlayout = QVBoxLayout()
-        vlayout.addWidget(self.plot_hist)
-        self.histogFrame.setLayout( vlayout )
+        layout = QGridLayout()
+        layout.addWidget(QLabel('Span Number:') , 0,0)
+        layout.addWidget( self.spanNumber       , 0,1)
+        layout.addWidget(self.plot_hist   , 1,0 , 1,2)
+        self.histogFrame.setLayout( layout )
+
+    def initMultiplotPeak(self):
+        self.multi_plot   = pg.GraphicsLayoutWidget()
+        self.samplingtime = QSpinBox()
+        self.samplingtime.setRange(1, 60)
+        self.samplingtime.setValue(5)
+        self.dicmultiplot = {}
+        self.samplingPtNbr  = QLabel()
+        # ---  --- #
+        self.spanNumber.valueChanged.connect( self.updateMultiplots )
+        self.samplingtime.valueChanged.connect( self.updatePtNbrLabel )
+        self.camera_view.fps_input.valueChanged.connect( self.updatePtNbrLabel )
+        # --- make layout --- #
+        self.multiplotFrame = QFrame()
+        layout = QGridLayout()
+        layout.addWidget(QLabel('Sampling duration (s): ') , 0,0)
+        layout.addWidget(self.samplingtime                 , 0,1)
+        layout.addWidget(QLabel('(s) --> nbr of pts:')     , 0,2)
+        layout.addWidget(self.samplingPtNbr                , 0,3)
+        layout.addWidget(self.multi_plot                   , 1,0 , 1,4)
+        self.multiplotFrame.setLayout( layout )
+
+    def initLissajousPlot(self):
+        self.lissajousFrame = QFrame()
+        self.lissajousFrame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
+        self.lissajousFrame.setLineWidth(3)
+        self.lissajousFrame.setMidLineWidth(1)
+        # ---  --- #
+        self.plot_lissjs = pg.PlotWidget()
+        self.plot_lissjs.setMinimumHeight(300)
+        self.plot_lissjs.setMinimumWidth(300)
+        self.plot_lissjs.showGrid(x=True, y=True)
+        lissjs_viewbox   = self.plot_lissjs.getViewBox()
+        self.data_lissjs = pg.ScatterPlotItem() #pg.PlotDataItem()
+        #self.data_lissjs.setSymbol('o')
+        self.plot_lissjs.addItem(self.data_lissjs)
+        # ---  --- #
+        lissjs_viewbox.setRange(xRange=(0,1), yRange=(0,1))
+        self.plot_xaxis  = QComboBox()
+        self.plot_yaxis  = QComboBox()
+        self.makeLissajousAxisSelection()
+        self.button_plot_lissajs = QPushButton('Plot')
+        self.button_plot_lissajs.setCheckable(True)
+        # --- make layout --- #
+        layout = QGridLayout()
+        layout.addWidget( QLabel('X axis'), 0,1)
+        layout.addWidget( QLabel('Y axis'), 0,2)
+        layout.addWidget( QLabel('Plot : '), 1,0)
+        layout.addWidget( self.plot_xaxis  , 1,1)
+        layout.addWidget( self.plot_yaxis  , 1,2)
+        layout.addWidget( self.button_plot_lissajs, 2,0 , 1,3)
+        layout.addWidget( self.plot_lissjs, 3,0 , 1,3)
+        self.lissajousFrame.setLayout( layout )
+
+    def setNewSaveFile(self):
+        # --- stop timers to avoid over load --- #
+        wasOn = self.camera_view.isOn
+        self.camera_view.stop_continuous_view()
+        # ---  --- #
+        filename = self.savefile.getSaveFileName(None)
+        dir_path = self.savefile.directory().absolutePath()
+        os.chdir(dir_path)
+        self.savefile_name.setText( filename[0] )
+        # --- restart processes --- #
+        if wasOn:
+            self.camera_view.start_continuous_view()
+
+    def saveDataFromMultiplot(self):
+        # --- stop timers to avoid over load --- #
+        wasOn = self.camera_view.isOn
+        self.camera_view.stop_continuous_view()
+        # ---  --- #
+        if self.spanNumber.value() == 0:
+            return None
+        # ---  --- #
+        filename = self.savefile_name.text()
+        try:
+            f = open(filename, 'w+')
+        except:
+            err_msg  = 'Error: in saveDataFromMultiplot, not able to open file.'
+            err_msg += '\nFilename is: {}'.format(filename)
+            self.log.addText( err_msg )
+        # ---  --- #
+        min_len   = np.inf
+        data_list = []
+        for key in self.dicmultiplot:
+            data_list.append( self.dicmultiplot[key][0].plot.yData )
+            min_len = np.min( [min_len, len(data_list[-1])] )
+        min_len = int(min_len)
+        if len(data_list) == 0:
+            return None
+        # --- equalise the length of the data, from the end since it is the most recent one --- # 
+        for i in range(len(data_list)):
+            data_list[i] = data_list[i][-min_len:]
+        data_list = np.array(data_list)
+        # ---  --- #
+        np.savetxt(filename, data_list)
+        # --- restart processes --- #
+        if wasOn:
+            self.camera_view.start_continuous_view()
+
+    def makeLissajousAxisSelection(self):
+        nx = self.plot_xaxis.count()
+        ny = self.plot_yaxis.count()
+        if nx != ny:
+            self.log.addText('Error in makeLissajousAxisSelection, the two axis combobox do not have the same item number.')
+            return None
+        for i in reversed(range(nx)):
+            self.plot_xaxis.removeItem(i)
+            self.plot_yaxis.removeItem(i)
+        for i in range(self.spanNumber.value()):
+            self.plot_xaxis.addItem(str(i+1))
+            self.plot_yaxis.addItem(str(i+1))
+
+    def toggleLissajousPlot(self):
+        if   self.button_plot_lissajs.isChecked():
+            self.doLissajous = True
+        else:
+            self.doLissajous = False
 
     def addSpan(self):
         N = len( list(self.dicspan.keys()) )
-        newspan = SpanObject(name='span_{}'.format(N+1), pos_init=N*50 +1)
+        newspan = SpanObject(name='span_{}'.format(N+1), pos_init=N*50 +1, log=self.log)
         self.dicspan[N+1] = newspan
         # ---  --- #
         self.plot_hist.addItem( newspan.span )
+        # --- add label --- #
+        #newspan.label.setParentItem(self.plot_hist.getViewBox())
+        self.plot_hist.addItem( newspan.label )
         # ---  --- #
         self.addPlot(newspan)
 
@@ -167,6 +303,7 @@ class PhaseNetworkElements(QWidget):
         self.removePlot( self.dicspan[N] )
         # ---  --- #
         self.plot_hist.removeItem( self.dicspan[N].span )
+        self.plot_hist.removeItem( self.dicspan[N].label )
         self.dicspan[N].setParent(None)
         del self.dicspan[N]
 
@@ -181,40 +318,42 @@ class PhaseNetworkElements(QWidget):
         elif n < n_current:
             for i in range(n_current-n):
                 self.removeSpan()
+        self.makeLissajousAxisSelection()
 
-    def initMultiplotPeak(self):
-        self.multi_plot = pg.GraphicsLayoutWidget()
-        self.samplingtime = QSpinBox()
-        self.samplingtime.setRange(1, 60)
-        self.dicmultiplot = {}
+    def addPlot(self, span):
+        N = len( list(self.dicspan.keys()) )
+        newplot = PeakPlot(name='plot_{}'.format(span.name), span=span, log=self.log)
+        self.dicmultiplot[newplot.name] = [newplot]
         # ---  --- #
-        self.spanNumber.valueChanged.connect( self.updateMultiplots )
-        # --- make layout --- #
-        self.multiplotFrame = QFrame()
-        layout = QGridLayout()
-        layout.addWidget(QLabel('Sampling duration (s): ') , 0,0)
-        layout.addWidget(self.samplingtime                 , 0,1)
-        layout.addWidget(self.multi_plot                   , 1,0 , 1,2)
-        self.multiplotFrame.setLayout( layout )
+        span.span.sigRegionChangeFinished.connect( self.updateMultiplots )
+        # ---  --- #
+        self.multi_plot.nextRow()
+        self.multi_plot.addItem( newplot )
+        # ---  --- #
+        label_item = self.multi_plot.addLabel(newplot.name[10:], angle = -90)
+        self.dicmultiplot[newplot.name].append( label_item )
+
+    def removePlot(self, span):
+        '''
+        In dictionary of plots, we retreive the plot list [plot_item, label_item], associated
+        to the span region.
+        '''
+        N = len( list(self.dicspan.keys()) )
+        plot_to_remove = self.dicmultiplot['plot_{}'.format(span.name)]
+        # ---  remove plot --- #
+        self.multi_plot.removeItem( plot_to_remove[0] )
+        plot_to_remove[0].setParent(None)
+        # --- remove label --- #
+        self.multi_plot.removeItem( plot_to_remove[1] )
+        # ---  --- #
+        del self.dicmultiplot['plot_{}'.format(span.name)]
+        span.setAssigned(False)
 
     def setLinkToCameraTimer(self):
         if   self.histrealtime.checkState() == 0:
             self.camera_view.timer.timeout.disconnect(self.updatePlotHistogram)
         elif self.histrealtime.checkState() == 2:
             self.camera_view.timer.timeout.connect(self.updatePlotHistogram)
-
-    def setNewSaveFile(self):
-        # --- stop timers to avoid over load --- #
-        self.stop_continuous_view()
-        self.fittingtimer.stop()
-        # ---  --- #
-        filename = self.savefile.getSaveFileName()
-        dir_path = self.savefile.directory().absolutePath()
-        os.chdir(dir_path)
-        self.savefile_name.setText( filename[0] )
-        # --- restart processes --- #
-        self.fittingtimer.start()
-        self.start_continuous_view()
 
     def addDataToFile(self):
         # --- stop timers to avoid over load --- #
@@ -259,25 +398,12 @@ class PhaseNetworkElements(QWidget):
         ind = self.normalise_hist.currentIndex()
         if   ind == 0:
             self.normalise = False
-            self.gaussianfit.setMaxAmp(255)
-            self.plot_hist.setYRange(0, 255)
-            self.threshold.setValue(255)
+            self.plot_hist.setXRange(0, 255)
         elif ind == 1:
             self.normalise = True
-            self.gaussianfit.setMaxAmp(1.)
-            self.plot_hist.setYRange(0, 1.)
-            self.threshold.setValue(1.)
+            self.plot_hist.setXRange(0, 1.)
         # ---  --- #
-        self.updatePlots()
-
-    def updatePlots(self):
-        self.quickPeakCount()
-        if self.peakcount > self.nbrpeak.value():
-            return None
-        if self.fittingactivate.checkState() == 2:
-            self.getParamFit()
-            self.plotGaussianFit()
-            self.updateRelativeHeightMatrix()
+        self.updatePlotHistogram()
 
     def updatePlotHistogram(self):
         frame = self.camera_view.frame
@@ -295,87 +421,33 @@ class PhaseNetworkElements(QWidget):
 
     def updateMultiplots(self):
         for key in self.dicmultiplot:
-            self.dicmultiplot[key].setFullData( self.data_hist.yData )
-            self.dicmultiplot[key].setLengthMax( self.samplingtime.value()*self.camera_view.fps )
-            self.dicmultiplot[key].updatePlot()
-
-    def addPlot(self, span):
-        N = len( list(self.dicspan.keys()) )
-        newplot = PeakPlot(name='plot_{}'.format(span.name), span=span)
-        self.dicmultiplot[newplot.name] = newplot
+            plot = self.dicmultiplot[key][0]
+            plot.setFullData( self.data_hist.xData ) #!! indeed since the histogram is vertical, the data are in the x axis !!
+            plot.setLengthMax( self.samplingtime.value()*self.camera_view.fps )
+            plot.updatePlot()
         # ---  --- #
-        span.span.sigRegionChangeFinished.connect( self.updateMultiplots )
-        # ---  --- #t
-        self.multi_plot.nextRow()
-        self.multi_plot.addItem( newplot )
+        if self.button_plot_lissajs.isChecked():# if self.doLissajous:
+            self.updateLissajousPlot()
 
-    def removePlot(self, span):
-        N = len( list(self.dicspan.keys()) )
-        plot_to_remove = self.dicmultiplot['plot_{}'.format(span.name)]
-        self.multi_plot.removeItem( plot_to_remove )
-        plot_to_remove.setParent(None)
-        del self.dicmultiplot['plot_{}'.format(span.name)]
-        # ---  --- #
-        span.setAssigned(False)
-
-    def clearGaussianFits(self):
-        KEYS = list(self.gaussian_plots.keys())
-        for i in reversed(range(len(KEYS))):
-            key = KEYS[i]
-            #self.plot_hist.removeItem(self.gaussian_plots[key])
-            self.gaussian_plots[key].clear()
-            del self.gaussian_plots[key]
-            #self.log.addText('Deleting plot: {}'.format(key))
-        self.gaussian_plots = {}
-
-    def plotGaussianFit(self):
-        # ---  remove old gaussian plots --- #
-        self.clearGaussianFits()
-        # ---  --- #
-        for key in self.gaussianfit.dic_gauss:
-            x     = self.data_hist.xData
-            #self.log.addText('gaussian param before plot: \n'+str(self.gaussianfit.dic_gauss[key]))
-            y_fit = self.gaussianfit.gaussian(x, *self.gaussianfit.dic_gauss[key])
-            self.gaussian_plots[key] = pg.PlotCurveItem(x=x,y=y_fit, pen='r')
-        # ---  --- #
-        for key in self.gaussian_plots:
-            self.plot_hist.addItem(self.gaussian_plots[key])
-
-    def quickPeakCount(self):
-        xdata = self.data_hist.xData
-        ydata = self.data_hist.yData
-        if type(xdata)==type(None) or type(ydata)==type(None):
-            self.peakcount = 0
+    def updateLissajousPlot(self):
+        xaxis_ind = self.plot_xaxis.currentText()
+        yaxis_ind = self.plot_yaxis.currentText()
+        try:
+            xplot     = self.dicmultiplot['plot_span_{}'.format(xaxis_ind)][0]
+            yplot     = self.dicmultiplot['plot_span_{}'.format(yaxis_ind)][0]
+        except:
+            if self.feedback:
+                err_msg  = 'Error: in updateLissajousPlot. Wrong key for dicmultiplot.'
+                self.log.addText( err_msg )
             return None
-        # --- threshold value --- #
-        threshold = self.threshold.value()
-        self.gaussianfit.setThreshold(self.threshold.value())
-        truth_list = (np.abs(ydata-threshold)+(ydata-threshold)).astype(bool)
-        # ---  --- #
-        block_list = [[i for i,value in it] for key,it in itertools.groupby(enumerate(truth_list), key=operator.itemgetter(1)) if key != 0]
-        self.peakcount = len(block_list)
-        self.param_peak = np.ones([self.peakcount,3])
-        for i in range(self.peakcount):
-            x0 = (block_list[i][-1]+block_list[i][0])/2.
-            a  = np.max(ydata[block_list[i]])
-            b  = (block_list[i][-1]-block_list[i][0])/2.
-            if b != 0: b = b**-1
-            self.param_peak[i] = [x0,a,b]
-        # ---  --- #
-        self.peakcount_lab.setText(str(self.peakcount))
-        self.updateParamLayout()
+        xdata     = xplot.plot.yData
+        ydata     = yplot.plot.yData
+        if type(xdata) != type(None) and type(ydata) != type(None):
+            n = np.min( [len(xdata), len(ydata)] )
+            self.data_lissjs.setData( xdata[-n:], ydata[-n:] )
 
-    def getParamFit(self):
-        #self.quickPeakCount()
-        # --- fitting --- #
-        self.gaussianfit.setXData(self.data_hist.xData)
-        self.gaussianfit.setYData(self.data_hist.yData)
-        self.gaussianfit.setPeakNumber( self.peakcount )
-        self.gaussianfit.setCenters(    self.param_peak[:,0])
-        self.gaussianfit.setAmplitudes( self.param_peak[:,1])
-        self.gaussianfit.setSTD(        self.param_peak[:,2])
-        # ---  --- #
-        self.gaussianfit.makeGaussianFit()
+    def updatePtNbrLabel(self):
+        self.samplingPtNbr.setText( str(self.samplingtime.value()*self.camera_view.fps) )
 
 #########################################################################################################################
 # CODE

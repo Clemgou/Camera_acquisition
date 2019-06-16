@@ -29,12 +29,21 @@ from PyQt5.QtGui     import QPainter
 from s_LogDisplay_class               import LogDisplay
 from s_Workers_class                  import *
 from s_ToolObjects_class              import GaussianFit
-from s_CameraDisplay_class            import CameraDisplay
 from Simu_camera                      import SimuCamera
 
 #########################################################################################################################
 # FUNCTIONS
 #########################################################################################################################
+
+def generatePgColormap(cm_name):
+    pltMap = plt.get_cmap(cm_name)
+    colors = pltMap.colors
+    colors = [c + [1.] for c in colors]
+    positions = np.linspace(0, 1, len(colors))
+    #print(positions, colors)
+    pgMap = pg.ColorMap(positions, colors)
+    return pgMap
+
 
 class DCMeasurement(QWidget):
     def __init__(self, camera=None, log=None, fps=10.):
@@ -55,7 +64,11 @@ class DCMeasurement(QWidget):
         # --- main attriute --- #
         self.camera    = camera
         self.contview  = ContinuousView(fps=self.fps)
+        self.timer     = pg.QtCore.QTimer() #QTimer()# pg.QtCore.QTimer()
         self.qlabl_max = QLabel()
+        self.dataframe = np.zeros([10,10])
+        # --- color acuisition --- #
+        self.initColorDic()
         # ---  --- #
         self.initUI()
 
@@ -71,9 +84,9 @@ class DCMeasurement(QWidget):
         self.fittingactivate.setTristate(False)
         self.fittingactivate.stateChanged.connect(self.acceptOrNot)
         # --- init frames --- #
-        self.initView()
         self.initParameterFittingFrame()
         self.initDisplayFittingFrame()
+        self.initView()
         self.relativeHeightsLayout()
         # --- layout --- #
         self.splitter.addWidget( self.viewFrame )
@@ -87,19 +100,51 @@ class DCMeasurement(QWidget):
         # ---  --- #
         self.fittingtimer.start()
 
+    def initColorDic(self):
+        self.colordic = {}
+        # --- jet-like cmap --- #
+        alpha     = 1.0
+        positions = [0.2, 0.5, 0.75, 1.0]
+        colors    = [[0,0,1.,alpha],[0,1.,1.,alpha],[1.,1.,0,alpha],[170/255,0,0,alpha]] #colors    = ['#0000ff', '#00ffff', '#ffff00', '#aa0000']
+        self.colordic['jet'] = pg.ColorMap(positions, colors)
+        # --- jet reversed cmap --- #
+        positions_r = [1-p_ for p_ in positions]
+        self.colordic['jet_r'] = pg.ColorMap(positions_r, colors)
+        # --- plasma cmap --- #
+        self.colordic['plasma'] = generatePgColormap('plasma')
+
     def initView(self):
-        self.camera_view     = CameraDisplay(camera=self.camera, log=self.log)
+        self.image_view     = pg.ImageView()
         # ---  --- #
-        self.camera_view.image_view.setMinimumWidth(600)
-        self.camera_view.image_view.setMinimumHeight(200)
+        self.image_view.setColorMap(self.colordic[self.cmap])
+        self.image_view.setLevels(0,255)
+        self.image_view.getHistogramWidget().item.setHistogramRange(0,255)
         # ---  --- #
+        self.image_view.setMinimumWidth(600)
+        self.image_view.setMinimumHeight(200)
+        # --- button widget --- #
+        self.button_StartStop = QPushButton('Start/Stop')
+        # ---  --- #
+        self.isOn        = False
+        self.fps_input   = QSpinBox()
+        self.fps_input.setRange(1, 48)
+        self.fps_input.setValue(self.fps)
+        # --- connections --- #
+        self.button_StartStop.clicked.connect(self.startStop_continuous_view)
+        self.fps_input.valueChanged.connect(self.setFPS)
+        # --- frame view --- #
         self.viewFrame = QFrame()
-        self.viewFrame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
-        self.viewFrame.setLineWidth(3)
-        self.viewFrame.setMidLineWidth(1)
-        layout = QVBoxLayout()
-        layout.addWidget( self.camera_view )
-        self.viewFrame.setLayout( layout )
+        hlayout = QHBoxLayout()
+        grid    = QGridLayout()
+        grid.addWidget( self.button_StartStop, 0,0 )
+        grid.addWidget( QLabel('fps :')      , 0,1 )
+        grid.addWidget( self.fps_input       , 0,2 )
+        grid.addWidget( QLabel('value max:') , 0,4 )
+        grid.addWidget( self.qlabl_max       , 0,5 )
+        vlayout = QVBoxLayout()
+        vlayout.addLayout( grid )
+        vlayout.addWidget( self.image_view )
+        self.viewFrame.setLayout( vlayout )
 
     def initDisplayFittingFrame(self):
         self.plot_hist    = pg.PlotWidget()
@@ -121,15 +166,13 @@ class DCMeasurement(QWidget):
         self.nbrpeak = QSpinBox()
         self.nbrpeak.setRange(1, 20)
         self.nbrpeak.setValue(2)
-        self.histrealtime = QCheckBox()
-        self.histrealtime.setTristate(False)
-        self.histrealtime.setCheckState(2)
-        self.setLinkToCameraTimer()
+        self.fitrealtime = QCheckBox()
+        self.fitrealtime.setTristate(False)
+        self.fitrealtime.setCheckState(2)
         # --- connections --- #
         self.threshold.sigPositionChangeFinished.connect(self.updatePlots)
         self.normalise_hist.currentIndexChanged.connect(self.setModeFitting)
         self.nbrpeak.valueChanged.connect(self.updatePlots)
-        self.histrealtime.stateChanged.connect( self.setLinkToCameraTimer )
         # --- default --- #
         self.plot_hist.setYRange(0, 255)
         if self.normalise:
@@ -143,7 +186,7 @@ class DCMeasurement(QWidget):
         hlayout.addWidget(QLabel('Number maximum of peaks:'))
         hlayout.addWidget( self.nbrpeak )
         hlayout.addWidget(QLabel('Continuous mode:'))
-        hlayout.addWidget( self.histrealtime )
+        hlayout.addWidget( self.fitrealtime )
         vlayout.addLayout(hlayout)
         vlayout.addWidget(self.plot_hist)
         self.fittingFrame.setLayout( vlayout )
@@ -340,24 +383,15 @@ class DCMeasurement(QWidget):
             #item.setParent(None)
             #self.matrelat_layout.addWidget( QLabel(str(self.matrelat)), 2,0 , 1,2)
 
-    def setLinkToCameraTimer(self):
-        if   self.histrealtime.checkState() == 0:
-            self.camera_view.timer.timeout.disconnect(self.updatePlotHistogram)
-        elif self.histrealtime.checkState() == 2:
-            self.camera_view.timer.timeout.connect(self.updatePlotHistogram)
-
-    def updatePlotHistogram(self):
-        frame = self.camera_view.frame
-        if type(frame) == type(None):
-            return None
-        # ---  --- #
-        frame = frame-np.mean(frame)
-        ydata = np.sum(frame,axis=0)/frame.shape[0]
-        ydata = ydata + np.abs(np.min([0, np.min(ydata)]))
-        if self.normalise:
-            ydata = ydata/np.max(ydata)
-        # --- plot data --- #
-        self.data_hist.setData(ydata)
+    @pyqtSlot()
+    def update_image(self):
+        self.dataframe = self.camera.get_frame(mode='Grey')
+        self.image_view.setImage(self.dataframe.T, autoHistogramRange=False, autoLevels=False)
+        self.qlabl_max.setText( str(np.max(self.dataframe)) )
+        # --- send data to histogram --- #
+        if   self.fitrealtime.checkState():
+            self.updatePlotHistogram()
+            #self.updatePlots()
 
     def updatePlots(self):
         self.quickPeakCount()
@@ -367,6 +401,16 @@ class DCMeasurement(QWidget):
             self.getParamFit()
             self.plotGaussianFit()
             self.updateRelativeHeightMatrix()
+
+    def updatePlotHistogram(self):
+        frame = self.dataframe
+        frame = frame-np.mean(frame)
+        ydata = np.sum(frame,axis=0)/frame.shape[0]
+        ydata = ydata + np.abs(np.min([0, np.min(ydata)]))
+        if self.normalise:
+            ydata = ydata/np.max(ydata)
+        # --- plot data --- #
+        self.data_hist.setData(ydata)
 
     def clearGaussianFits(self):
         KEYS = list(self.gaussian_plots.keys())

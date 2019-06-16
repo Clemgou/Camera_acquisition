@@ -138,7 +138,7 @@ class GaussianFit():
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 class SpanObject(pg.GraphicsWidget):
-    def __init__(self, name='span_', orientation='horizontal', color='y', clickable=True, alpha=.2, pos_init=0, init_width=40, assigned=False):
+    def __init__(self, name='span_', orientation='horizontal', color='y', clickable=True, alpha=.2, pos_init=0, init_width=40, assigned=False, log=None):
         super().__init__()
         # ---  --- #
         self.name   = name
@@ -147,25 +147,38 @@ class SpanObject(pg.GraphicsWidget):
         self.clickbl= clickable
         self.alpha  = alpha * 255
         self.isAssigned = assigned
+        self.log    = log
         # ---  --- #
         if   self.orient=='horizontal':
             self.span = pg.LinearRegionItem(orientation=pg.LinearRegionItem.Horizontal)
         elif self.orient=='vertical':
             self.span = pg.LinearRegionItem(orientation=pg.LinearRegionItem.Vertical)
+        # --- label --- #
+        self.label       = pg.TextItem(text=self.name[5:])
+        self.text_width  = np.abs( self.label.textItem.textWidth() )
+        self.text_height = self.text_width/len(self.name) *3 #here we get the width of one character, and suppose that its height is 3 time the width.
+        self.span.sigRegionChanged.connect( self.updateTextPos )
         # ---  --- #
         self.color.setAlpha(self.alpha)
         self.span.setBrush( self.color )
         self.span.setMovable(True)
         self.span.setRegion( [pos_init+0 , pos_init+init_width] )
+        self.span.setBounds([0,2000])
 
     def setAssigned(self, bool_):
         self.isAssigned = bool_
 
+    def updateTextPos(self):
+        self.label.setPos( 0.  ,   np.mean(self.span.getRegion())+self.text_height*0.2  )
+        # --- feed back --- #
+        #self.log.addText( 'TEXt POSITION: {}'.format(self.label.pos()) )
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 class PeakPlot(pg.PlotItem):
-    def __init__(self, name='peakplot_', clickable=True, span=None, data=[], color='r', len_max=1):
+    def __init__(self, name='peakplot_', clickable=True, span=None, data=[], color='r', len_max=1, log=None):
         super().__init__()
+        self.feedback = False
         # ---  --- #
         self.plot = pg.PlotDataItem()
         self.peakdata = None
@@ -174,6 +187,7 @@ class PeakPlot(pg.PlotItem):
         self.span = span
         self.color= pg.mkColor(color)
         self.lengthmax = len_max
+        self.log  = log
         # ---  --- #
         self.addItem( self.plot )
         self.plot.setPen( self.color )
@@ -193,14 +207,25 @@ class PeakPlot(pg.PlotItem):
     def updatePlot(self):
         region = self.span.span.getRegion()
         m , M  = int(np.min(region)), int(np.max(region))
-        if type(self.data) != type(None):
-            try:
-                self.addDataElement( np.max(self.data[m:M]) )
-            except:
-                print('Error: in updatePlot for object PeakPlot.')
-                print('region:', region, m, M)
-                print( self.data[m:M] )
-                return None
+        err_msg  = ''
+        if type(self.data) != type(None) and m != M:
+            if len(self.data) >= m or len(self.data) >= M:
+                if len(self.data[m:M]) != 0:
+                    try:
+                        self.addDataElement( np.max(self.data[m:M]) )
+                    except:
+                        err_msg += 'Error: in updatePlot for object PeakPlot: '+self.name
+                        err_msg += '\nIssue with: self.addDataElement( np.max(self.data[m:M]) ),'
+                        err_msg += '\nsample: {}'.format(self.data[m:M])
+                else:
+                    err_msg += 'Plot {0}, span sampled size: {1}\ndata before sampling: {2}'.format(self.name, len(self.data[m:M]), self.data)
+            else:
+                err_msg += 'Plot {0}, datat len: {1}, min-max: {2}-{3}'.format(self.name, len(self.data), m,M)
+        else:
+            err_msg += 'Plot {0}, datat type: {1}'.format(self.name, type(self.data))
+        if self.feedback:
+            self.log.addText( err_msg )
+        return None
 
     def addDataElement(self, y):
         if type(self.peakdata) == type(None):
@@ -209,14 +234,18 @@ class PeakPlot(pg.PlotItem):
             self.peakdata.append(y)
         if len(self.peakdata) > self.lengthmax:
             for i in range(len(self.peakdata) - self.lengthmax):
-                self.peakdata.pop(0)
+                if len(self.peakdata) !=0:
+                    self.peakdata.pop(0)
+                else:
+                    self.log.addText('Error in pop, the peakdata seem to be shorter than expected.')
         # ---  -- #
         try:
-            ydata = np.array(self.peakdata)
-            ydata = ydata/np.max(ydata)
-            self.plot.setData( ydata )
+            data = np.array(self.peakdata)
+            data = data/np.max(data)
+            self.plot.setData( data )
         except:
-            print('YDATA: ',ydata)
+            err_msg  = 'Issues with data, data: {}'.format(data)
+            self.log.addText( err_msg )
 
 ################################################################################################
 # CODE

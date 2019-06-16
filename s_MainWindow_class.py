@@ -19,6 +19,7 @@ from PyQt5.QtCore    import QDate, QTime, QDateTime, Qt
 from s_LogDisplay_class               import LogDisplay
 from s_Preview_class                  import Preview
 from s_DCMeasurement_class            import DCMeasurement
+from s_PhaseNetworkElements_class     import PhaseNetworkElements
 
 from Simu_camera import *
 
@@ -243,7 +244,7 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         self.centraltab.setCurrentIndex( newtabindex )
 
     def insertNewTabLissajousPlot(self):
-        newtabindex = self.centraltab.addTab( self.centralwidget, "Lissa" ) # also: addTab(QWidget , QIcon , QString )
+        newtabindex = self.centraltab.addTab( PhaseNetworkElements(camera=self.camera, log=self.log), "Lissa" ) # also: addTab(QWidget , QIcon , QString )
         self.centraltab.setCurrentIndex( newtabindex )
 
     def closeMainWindow(self):
