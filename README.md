@@ -39,4 +39,6 @@ getHistogram method. I used the newest version (Jun 17, 2019) available
 in the git repository of pyqtgraph:
 https://github.com/pyqtgraph/pyqtgraph.git
 
+The working file can be found in the Miscellaneous directory.
+
 2)
