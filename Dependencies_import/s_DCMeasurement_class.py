@@ -6,18 +6,8 @@
 #########################################################################################################################
 # IMPORTATION
 #########################################################################################################################
-import sys
-sys.path.insert(0, '/home/cgou/ENS/STAGE/M2--stage/CircuitsNetwork_phase_analysis') #for Simu_camera only
 import os
-
-
-import time
-import numpy as np
-import itertools, operator
-import matplotlib.pyplot as plt
-import cv2
-import pyqtgraph as pg
-
+import sys
 import PyQt5
 from PyQt5.QtWidgets import QWidget, QFrame, QApplication
 from PyQt5.QtWidgets import QVBoxLayout,QHBoxLayout,QSplitter, QGridLayout
@@ -26,11 +16,17 @@ from PyQt5.QtCore    import Qt, QThread, QTimer, QObject, pyqtSignal, pyqtSlot, 
 from PyQt5.QtGui     import QPainter
 
 
+import numpy as np
+import itertools, operator
+import matplotlib.pyplot as plt
+import pyqtgraph as pg
+
+
 from s_LogDisplay_class               import LogDisplay
 from s_Workers_class                  import *
 from s_ToolObjects_class              import GaussianFit
 from s_CameraDisplay_class            import CameraDisplay
-from Simu_camera                      import SimuCamera
+from s_SimuCamera_class               import SimuCamera
 
 #########################################################################################################################
 # FUNCTIONS
@@ -481,7 +477,6 @@ class DCMeasurement(QWidget):
 # CODE
 #########################################################################################################################
 if __name__ == '__main__':
-    print('OpenCV 2 version: ',cv2.__version__)
     print('STARTING')
     camera = SimuCamera(0)
     #camera.__str__()

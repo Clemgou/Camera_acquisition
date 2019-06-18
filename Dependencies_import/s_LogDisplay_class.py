@@ -4,7 +4,7 @@
 ################################################################################################
 # IMPORTATIONS
 ################################################################################################
-
+import os
 import sys
 import PyQt5 
 from PyQt5.QtWidgets import QApplication, QFrame
@@ -12,7 +12,6 @@ from PyQt5.QtWidgets import QHBoxLayout,QVBoxLayout
 from PyQt5.QtWidgets import QToolTip, QLabel, QTextEdit
 from PyQt5.QtCore    import QDate, QTime, QDateTime
 
-import os
 
 ################################################################################################
 # FUNCTIONS

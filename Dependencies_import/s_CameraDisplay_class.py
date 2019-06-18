@@ -7,15 +7,6 @@
 # IMPORTATION
 #########################################################################################################################
 import sys
-sys.path.insert(0, '/home/cgou/ENS/STAGE/M2--stage/CircuitsNetwork_phase_analysis') #for Simu_camera only
-
-
-import time
-import numpy as np
-import matplotlib.pyplot as plt
-import cv2
-import pyqtgraph as pg
-
 import PyQt5
 from PyQt5.QtWidgets import QWidget, QFrame, QApplication
 from PyQt5.QtWidgets import QVBoxLayout,QHBoxLayout,QSplitter,QGridLayout
@@ -24,11 +15,17 @@ from PyQt5.QtCore    import Qt, QThread, QTimer, QObject, pyqtSignal, pyqtSlot, 
 from PyQt5.QtGui     import QPainter
 
 
+import numpy as np
+import pyqtgraph as pg
+
+
 from s_LogDisplay_class               import LogDisplay
 from s_Workers_class                  import *
 from s_Miscellaneous_functions        import *
-from Simu_camera                      import SimuCamera
+from s_SimuCamera_class               import SimuCamera
 
+
+import time
 #########################################################################################################################
 # FUNCTIONS
 #########################################################################################################################
@@ -64,6 +61,7 @@ class CameraDisplay(QWidget):
         # --- button widget --- #
         self.button_startstop = QPushButton('Start/Stop')
         self.button_startstop.setStyleSheet("background-color: red")
+        self.button_nextFrame = QPushButton('Next frame')
         # ---  --- #
         self.fps_input   = QSpinBox()
         self.fps_input.setRange(1, 48)
@@ -71,9 +69,11 @@ class CameraDisplay(QWidget):
         # --- connections --- #
         self.button_startstop.clicked.connect(self.startStop_continuous_view)
         self.fps_input.valueChanged.connect(self.setFPS)
+        self.button_nextFrame.clicked.connect( self.update_frame )
         # --- layout --- #
         grid = QGridLayout()
-        grid.addWidget( self.button_startstop, 0,0 , 1,2)
+        grid.addWidget( self.button_startstop, 0,0)
+        grid.addWidget( self.button_nextFrame, 0,1)
         grid.addWidget( QLabel('fps :')      , 0,2)
         grid.addWidget( self.fps_input       , 0,3)
         grid.addWidget( QLabel('value max:') , 0,5)
@@ -118,7 +118,6 @@ class CameraDisplay(QWidget):
         self.contview.setFPS( self.fps )
         self.timer.setInterval(1e3/self.fps)
 
-    @pyqtSlot()
     def update_frame(self):
         self.frame = self.camera.get_frame(mode='Grey')
         self.image_view.setImage(self.frame.T, autoHistogramRange=False, autoLevels=False)
@@ -128,9 +127,13 @@ class CameraDisplay(QWidget):
         if  self.isOn:
             self.stop_continuous_view()
             self.button_startstop.setStyleSheet("background-color: red")
+            self.button_nextFrame.setFlat(False)
+            self.button_nextFrame.setEnabled(True)
         else:
             self.start_continuous_view()
             self.button_startstop.setStyleSheet("background-color: green")
+            self.button_nextFrame.setFlat(True)
+            self.button_nextFrame.setEnabled(False)
 
     def start_continuous_view(self):
         if   True:
@@ -175,7 +178,6 @@ class CameraDisplay(QWidget):
 # CODE
 #########################################################################################################################
 if __name__ == '__main__':
-    print('OpenCV 2 version: ',cv2.__version__)
     print('STARTING')
     camera = SimuCamera(0)
     camera.__str__()

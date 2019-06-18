@@ -5,12 +5,10 @@
 # IMPORTATION
 ################################################################################################
 
-import numpy as np
+import numpy     as np
 import pyqtgraph as pg
 import scipy
 from scipy.optimize import curve_fit
-
-
 
 ################################################################################################
 # FUNCTIONS
