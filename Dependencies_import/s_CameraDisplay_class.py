@@ -179,8 +179,11 @@ class CameraDisplay(QWidget):
 #########################################################################################################################
 if __name__ == '__main__':
     print('STARTING')
-    camera = SimuCamera(0)
-    camera.__str__()
+    dir_path = '/home/cgou/ENS/STAGE/M2--stage/Camera_acquisition/Micellaneous/Camera_views/'
+    camera   = Camera(cam_id=0)
+    if not camera.isCameraInit:
+        camera = SimuCamera(0, directory_path=dir_path)
+        camera.__str__()
 
     app = QApplication([])
     start_window = CameraDisplay(camera)
