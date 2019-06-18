@@ -20,8 +20,8 @@ from s_LogDisplay_class               import LogDisplay
 from s_Preview_class                  import Preview
 from s_DCMeasurement_class            import DCMeasurement
 from s_PhaseNetworkElements_class     import PhaseNetworkElements
-
-from Simu_camera import *
+from s_Camera_class                   import Camera
+from s_SimuCamera_class               import SimuCamera
 
 import numpy as np
 import os
@@ -43,10 +43,15 @@ class CameraManagementWindow(QMainWindow):
         self.initUI()
 
     def initUI(self):
-        self.cameraname = QLabel()
-        self.open_state = QLabel()
+        self.cameraname = QLabel('current camera name')
+        self.open_state = QLabel('Camera open state')
+        self.camera_list= QComboBox()
+        self.button_refresh_camList = QPushButton('Look for camera')
         # --- make layout --- #
-        self.layout.addWidget( QLabel('Just to display something') )
+        self.layout.addWidget(self.cameraname, 0,0)
+        self.layout.addWidget(self.open_state, 0,1)
+        self.layout.addWidget(self.camera_list, 1,0)
+        self.layout.addWidget(self.button_refresh_camList, 1,1)
 
     def displayCameraProperties(self):
         opened       = self.camera.isOpened()
@@ -61,9 +66,9 @@ class CameraManagementWindow(QMainWindow):
         color_hue    = self.camera.get(cv2.CAP_PROP_HUE)
         exposure     = self.camera.get(cv2.CAP_PROP_EXPOSURE)
         gain         = self.camera.get(cv2.CAP_PROP_GAIN)
-        conversion  = self.camera.get(cv2.CAP_PROP_CONVERT_RGB)
+        conversion   = self.camera.get(cv2.CAP_PROP_CONVERT_RGB)
 
-
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
 
 class MainWindow(QMainWindow): # inherits from the QMainWindow class
     def __init__(self):
@@ -101,8 +106,8 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         self.log        = LogDisplay()
         self.insertNewTabLogDisplay(self.log)
         # --- main attributes --- #
-        self.camera = SimuCamera(0)
         self.cameraManag = CameraManagementWindow()
+        self.initCamera()
 
     def initWindowMenu(self):
         '''
@@ -132,6 +137,15 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         self.centraltab.setTabsClosable(True)
         self.centraltab.tabCloseRequested.connect( self.closeTabe )
         self.setCentralWidget(self.centraltab)
+
+    def initCamera(self):
+        dir_path = '/home/cgou/ENS/STAGE/M2--stage/Camera_acquisition/Miscellaneous/Camera_views/'
+        self.camera   = Camera(cam_id=0, log=self.log)
+        if not self.camera.isCameraInit:
+            self.camera = SimuCamera(0, directory_path=dir_path, log=self.log)
+            self.log.addText( self.camera.__str__() )
+        else:
+            self.log.addText('Camera in use is: USB camera')
 
     def setWindToCenter(self):
         '''
@@ -248,14 +262,20 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         self.centraltab.setCurrentIndex( newtabindex )
 
     def closeMainWindow(self):
+        self.camera.stop_video()
+        self.camera.close_camera()
+        print('Is camera closed ? {}'.format( not self.camera.isCameraInit ) )
         self.close()
 
 ################################################################################################
 # CODE
 ################################################################################################
 if __name__=='__main__':
+    print('STARTING')
     appMain = QApplication(sys.argv)
-    wind  = MainWindow()
+    wind    = MainWindow()
+    appMain.aboutToQuit.connect(wind.closeMainWindow)
     wind.show()
     sys.exit(appMain.exec_())
+    print('FINISHED')
 

@@ -10,7 +10,7 @@ import sys
 import PyQt5
 from PyQt5.QtWidgets import QWidget, QFrame, QApplication
 from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QSplitter, QGridLayout
-from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QSpinBox, QProgressBar, QComboBox, QFileDialog
+from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QSpinBox, QProgressBar, QComboBox, QFileDialog, QSlider
 from PyQt5.QtCore    import Qt, QThread, QTimer, QObject, pyqtSignal, pyqtSlot, QRect
 from PyQt5.QtGui     import QPainter
 
@@ -18,7 +18,7 @@ from PyQt5.QtGui     import QPainter
 import numpy             as np
 import matplotlib.pyplot as plt
 import pyqtgraph         as pg
-from PIL import Image
+from PIL        import Image
 
 
 from s_LogDisplay_class               import LogDisplay
@@ -41,13 +41,20 @@ class Preview(QWidget):
             self.log = log
         else:
             self.log = LogDisplay()
-        #self.log.show()
+        self.log.show()
         # --- default --- #
         self.fps       = fps
         self.normalise_hist = True
         self.cmap      = 'jet'
         # --- main attriute --- #
         self.camera    = camera
+        if self.camera == None:
+            dir_path = '/home/cgou/ENS/STAGE/M2--stage/Camera_acquisition/Miscellaneous/Camera_views/'
+            self.camera   = Camera(cam_id=0, log=self.log)
+            if not self.camera.isCameraInit:
+                self.camera = SimuCamera(0, directory_path=dir_path, log=self.log)
+                self.camera.__str__()
+        # ---  --- #
         self.contview  = ContinuousView(fps=self.fps)
         self.timer     = pg.QtCore.QTimer() #QTimer()# pg.QtCore.QTimer()
         self.qlabl_max = QLabel()
@@ -93,6 +100,10 @@ class Preview(QWidget):
         self.histogram_mode   = QComboBox()
         self.histogram_mode.addItem('Normalise')
         self.histogram_mode.addItem('Raw')
+        self.exposure_slider  = QSlider(Qt.Horizontal)
+        self.exposure_slider.setRange(0.10, 99.00)
+        self.exposure_slider.setValue(1.)
+        self.exposure_label   = QLabel('Exposure time: {: 2.2f} ms'.format(self.exposure_slider.value()))
         # --- connections --- #
         self.button_startstop.clicked.connect(self.startStop_continuous_view)
         self.fps_input.valueChanged.connect(self.setFPS)
@@ -100,6 +111,7 @@ class Preview(QWidget):
         self.button_nextFrame.clicked.connect( self.nextFrame )
         self.button_acq_movie.clicked.connect( self.acquireMovie )
         self.histogram_mode.currentIndexChanged.connect( self.setHistogramMode )
+        self.exposure_slider.valueChanged.connect( self.update_exposure )
         # --- layout --- #
         grid     = QGridLayout()
         grid.addWidget( self.button_startstop , 0,0 , 1,3)
@@ -110,6 +122,8 @@ class Preview(QWidget):
         grid.addWidget( self.fps_input        , 1,3)
         grid.addWidget( QLabel('value max:')  , 1,4)
         grid.addWidget( self.qlabl_max        , 1,5)
+        grid.addWidget( self.exposure_label   , 2,0)
+        grid.addWidget( self.exposure_slider  , 2,1 , 1,5)
         self.layout.addLayout(grid)
         self.layout.addWidget(self.image_view)
         self.layout.addWidget(self.view_layout)
@@ -221,6 +235,11 @@ class Preview(QWidget):
             ydata = ydata/np.max(ydata)
         self.data_hist.setData(ydata)
 
+    def update_exposure(self):
+        exp_val = self.exposure_slider.value()
+        self.camera.setExposure( exp_val )
+        self.exposure_label.setText( 'Exposure time: {: 2.2f} ms'.format(self.exposure_slider.value()) )
+
     def acquireFrame(self):
         wasOn = self.isOn
         if self.isOn:
@@ -322,16 +341,10 @@ class Preview(QWidget):
 #########################################################################################################################
 if __name__ == '__main__':
     print('STARTING')
-    dir_path = '/home/cgou/ENS/STAGE/M2--stage/Camera_acquisition/Miscellaneous/Camera_views/'
-    camera   = Camera(cam_id=0)
-    if not camera.isCameraInit:
-        camera = SimuCamera(0, directory_path=dir_path)
-        camera.__str__()
-
     app = QApplication([])
-    start_window = Preview(camera)
+    start_window = Preview()
     start_window.show()
     app.exit(app.exec_())
     print('Close camera')
-    camera.close_camera()
+    start_window.camera.close_camera()
     print('FINISHED')

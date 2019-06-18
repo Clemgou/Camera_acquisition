@@ -6,10 +6,15 @@
 #########################################################################################################################
 # IMPORTATION
 #########################################################################################################################
-import numpy as np
+import sys
+import numpy  as np
 import cv2
 import pyueye as pe
-from   pyueye import ueye
+from   pyueye    import ueye
+import ctypes
+
+import faulthandler
+#faulthandler.enable()
 
 
 from s_Miscellaneous_functions        import get_bits_per_pixel
@@ -75,6 +80,7 @@ class Camera:
                 ret = ueye.is_ExitCamera(self.cam)
         if ret == ueye.IS_SUCCESS:
                 self.cam = None
+                self.isCameraInit = False
 
     def __str__(self):
         return None
@@ -216,6 +222,21 @@ class Camera:
     def change_colormode(self, colormode):
         self.colorMode = colormode
         self.set_colormode()
+
+    def setExposure(self, exp_val):
+        '''
+        Exposure time in ms.
+        '''
+        val_formated = ctypes.c_double( int(exp_val) )
+        val_size     = ctypes.c_int32( ctypes.sizeof(val_formated) )
+        hasWorked = ueye.is_Exposure(self.cam, ueye.IS_EXPOSURE_CMD_SET_EXPOSURE, val_formated, val_size)
+        self.check( hasWorked, 'is_Exposure')
+        #self.addToLog('is_Exposure has worked: {0}\n Value of exposure is: {1}, of size {2}.\nWanted value is: {3}'.format(hasWorked, val_formated, val_size, exp_val))
+
+    def setHarwareGain(self, gain_val):
+        current_gain = ueye.is_SetHardwareGain(self.cam, ueye.IS_GET_MASTER_GAIN, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER)
+        hasWorked    = ueye.is_SetHardwareGain(self.cam, gain_val               , ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER)
+        self.check( hasWorked, 'is_SetHardwareGain')
 
 #########################################################################################################################
 # CODE

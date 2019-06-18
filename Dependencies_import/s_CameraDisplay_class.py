@@ -23,6 +23,7 @@ from s_LogDisplay_class               import LogDisplay
 from s_Workers_class                  import *
 from s_Miscellaneous_functions        import *
 from s_SimuCamera_class               import SimuCamera
+from s_Camera_class                   import Camera
 
 
 import time
@@ -69,7 +70,7 @@ class CameraDisplay(QWidget):
         # --- connections --- #
         self.button_startstop.clicked.connect(self.startStop_continuous_view)
         self.fps_input.valueChanged.connect(self.setFPS)
-        self.button_nextFrame.clicked.connect( self.update_frame )
+        self.button_nextFrame.clicked.connect( self.nextFrame )
         # --- layout --- #
         grid = QGridLayout()
         grid.addWidget( self.button_startstop, 0,0)
@@ -82,6 +83,7 @@ class CameraDisplay(QWidget):
         self.layout.addWidget(self.image_view)
         self.setLayout(self.layout)
         # ---  --- #
+        self.initCamera()
 
     def initColorDic(self):
         self.colordic = {}
@@ -106,6 +108,11 @@ class CameraDisplay(QWidget):
         self.image_view.setMinimumWidth(800)
         self.image_view.setMinimumHeight(600)
 
+    def initCamera(self):
+        self.camera.set_colormode()
+        self.camera.set_aoi(0,0, 1280,1024)
+        self.camera.alloc()
+
     def hideHistogram(self):
         self.image_view.ui.histogram.hide()
 
@@ -119,9 +126,19 @@ class CameraDisplay(QWidget):
         self.timer.setInterval(1e3/self.fps)
 
     def update_frame(self):
-        self.frame = self.camera.get_frame(mode='Grey')
-        self.image_view.setImage(self.frame.T, autoHistogramRange=False, autoLevels=False)
+        self.frame = self.camera.get_frame()
         self.qlabl_max.setText( str(np.max(self.frame)) )
+        self.image_view.setImage(self.frame.T, autoHistogramRange=False, autoLevels=False)
+
+    def nextFrame(self):
+        wasOn = self.isOn
+        if not self.isOn:
+            self.camera.capture_video()
+        # ---  --- #
+        self.update_frame()
+        # ---  --- #
+        if not wasOn:
+            self.camera.capture_video()
 
     def startStop_continuous_view(self):
         if  self.isOn:
@@ -136,6 +153,7 @@ class CameraDisplay(QWidget):
             self.button_nextFrame.setEnabled(False)
 
     def start_continuous_view(self):
+        self.camera.capture_video()
         if   True:
             self.start_continuous_view_qtimer()
         elif False:
@@ -144,6 +162,7 @@ class CameraDisplay(QWidget):
         self.isOn = True
 
     def stop_continuous_view(self):
+        self.camera.stop_video()
         if   True:
             self.stop_continuous_view_qtimer()
         elif False:
