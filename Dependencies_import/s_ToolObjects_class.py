@@ -15,7 +15,7 @@ from scipy.optimize import curve_fit
 ################################################################################################
 
 class GaussianFit():
-    def __init__(self, xdata=[], ydata=[], N=1, x0=[], a=[], b=[], mode='all', peakthreshold=1., max_=1., log=None):
+    def __init__(self, xdata=[], ydata=[], N=1, x0=[], a=[], b=[], mode='all', peakthreshold=1., max_=1., log=None, span_dic={}):
         '''
         Parameters:
             - N: number of gaussian to fit
@@ -31,6 +31,7 @@ class GaussianFit():
         self.mode      = mode
         self.max       = max_
         self.threshold = peakthreshold
+        self.dic_span  = span_dic
         # ---  --- #
         self.xdata = xdata
         self.ydata = ydata
@@ -78,25 +79,42 @@ class GaussianFit():
             self.log.addText(err_msg)
 
     def fitPeakByPeak(self):
-        return None
+        KEYS = list( self.dic_span.keys() )
+        N    = len(KEYS)
+        self.param = np.zeros([N,3])
+        for i in range(N):
+            region = self.dic_span[KEYS[i]].span.getRegion()
+            m , M  = int(np.min(region)), int(np.max(region))
+            x0,a,b = np.mean( self.xdata[m:M] ), np.max(self.xdata[m:M]) , 1.#np.abs(M-m)/2.
+            popt, pcov = curve_fit(self.gaussian, self.xdata[m:M], self.ydata[m:M], p0=[x0, a, b])
+            try:
+                #popt, pcov = curve_fit(self.gaussian, self.xdata[m:M], self.ydata[m:M], p0=[x0, a, b])
+                self.param[i] = popt
+            except:
+               err_msg = 'Error: in fitPeakByPeak. Something is wrong with curve_fit implementation.\nparam_guess: {}'.format(self.param)
+               self.log.addText(err_msg)
 
     def fitMethod(self):
         if   self.mode == 'all':
+            self.makeParam()
             self.fitAlltogether()
+            # --- verification everything went normally --- #
+            if self.param.shape[0] != self.fit_nbr:
+                err_msg = 'Error: in fitMethod, the number of fitting parameter do not match the number of peaks.'
+                self.log.addText(err_msg)
+                return None
         elif self.mode == 'pbp':
             self.fitPeakByPeak()
-            pass
-        # --- verification everything went normally --- #
-        if self.param.shape[0] != self.fit_nbr:
-            err_msg = 'Error: in fitMethod, the number of fitting parameter do not match the number of peaks.'
-            print(err_msg)
-            return None
+            # --- verification everything went normally --- #
+            if self.param.shape[0] != len( list(self.dic_span.keys()) ):
+                err_msg = 'Error: in fitMethod, the number of fitting parameter do not match the number of peaks.'
+                self.log.addText(err_msg)
+                return None
 
     def makeGaussianFit(self):
-        if self.fit_nbr == 0:
+        if self.fit_nbr == 0 and self.mode == 'all':
             return None
         # ---  --- #
-        self.makeParam()
         self.fitMethod()
         # ---  --- #
         self.resetDicGauss()
@@ -132,6 +150,9 @@ class GaussianFit():
 
     def setThreshold(self, thresh):
         self.threshold = thresh
+
+    def setSpanDictionary(self, span_dic):
+        self.dic_span = span_dic
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
@@ -176,7 +197,7 @@ class SpanObject(pg.GraphicsWidget):
 class PeakPlot(pg.PlotItem):
     def __init__(self, name='peakplot_', clickable=True, span=None, data=[], color='r', len_max=1, log=None):
         super().__init__()
-        self.feedback = False
+        self.feedback = True
         # ---  --- #
         self.plot = pg.PlotDataItem()
         self.peakdata = None
@@ -231,7 +252,7 @@ class PeakPlot(pg.PlotItem):
         else:
             self.peakdata.append(y)
         if len(self.peakdata) > self.lengthmax:
-            for i in range(len(self.peakdata) - self.lengthmax):
+            for i in range( int(len(self.peakdata)-self.lengthmax) ):
                 if len(self.peakdata) !=0:
                     self.peakdata.pop(0)
                 else:

@@ -10,7 +10,7 @@ import sys
 import PyQt5
 from PyQt5.QtWidgets import QWidget, QFrame, QApplication
 from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QSplitter, QGridLayout
-from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QSpinBox, QProgressBar, QComboBox, QFileDialog, QSlider
+from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QSpinBox, QProgressBar, QComboBox, QFileDialog, QSlider, QDoubleSpinBox
 from PyQt5.QtCore    import Qt, QThread, QTimer, QObject, pyqtSignal, pyqtSlot, QRect
 from PyQt5.QtGui     import QPainter
 
@@ -41,7 +41,7 @@ class Preview(QWidget):
             self.log = log
         else:
             self.log = LogDisplay()
-        self.log.show()
+        #self.log.show()
         # --- default --- #
         self.fps       = fps
         self.normalise_hist = True
@@ -53,7 +53,7 @@ class Preview(QWidget):
             self.camera   = Camera(cam_id=0, log=self.log)
             if not self.camera.isCameraInit:
                 self.camera = SimuCamera(0, directory_path=dir_path, log=self.log)
-                self.camera.__str__()
+                self.camera.__info__()
         # ---  --- #
         self.contview  = ContinuousView(fps=self.fps)
         self.timer     = pg.QtCore.QTimer() #QTimer()# pg.QtCore.QTimer()
@@ -64,6 +64,8 @@ class Preview(QWidget):
         self.initCamera()
         # ---  --- #
         self.initUI()
+        # ---  --- #
+        self.camera.setExposure( self.exposure_slider.value() )
 
     def initUI(self):
         # ---  --- #
@@ -93,17 +95,20 @@ class Preview(QWidget):
         self.progressbar      = QProgressBar()
         self.progressbar.setValue(0)
         self.format_save      = QComboBox()
-        self.format_save.addItem('png')
         self.format_save.addItem('tif')
         self.format_save.addItem('tiff')
+        self.format_save.addItem('png')
         self.format_save.addItem('jpg')
         self.histogram_mode   = QComboBox()
         self.histogram_mode.addItem('Normalise')
         self.histogram_mode.addItem('Raw')
+        self.exposure_spinb   = QDoubleSpinBox()
+        self.exposure_spinb.setRange(0.10, 99.0)
+        self.exposure_spinb.setSingleStep(0.01)
+        self.exposure_spinb.setValue(12.5)
         self.exposure_slider  = QSlider(Qt.Horizontal)
-        self.exposure_slider.setRange(0.10, 99.00)
-        self.exposure_slider.setValue(1.)
-        self.exposure_label   = QLabel('Exposure time: {: 2.2f} ms'.format(self.exposure_slider.value()))
+        self.exposure_slider.setRange(self.exposure_spinb.minimum()*100, self.exposure_spinb.maximum()*100)
+        self.exposure_slider.setValue(self.exposure_spinb.value()*100)
         # --- connections --- #
         self.button_startstop.clicked.connect(self.startStop_continuous_view)
         self.fps_input.valueChanged.connect(self.setFPS)
@@ -111,7 +116,8 @@ class Preview(QWidget):
         self.button_nextFrame.clicked.connect( self.nextFrame )
         self.button_acq_movie.clicked.connect( self.acquireMovie )
         self.histogram_mode.currentIndexChanged.connect( self.setHistogramMode )
-        self.exposure_slider.valueChanged.connect( self.update_exposure )
+        self.exposure_slider.valueChanged.connect( self.update_spinbox )
+        self.exposure_spinb.valueChanged.connect( self.update_slider )
         # --- layout --- #
         grid     = QGridLayout()
         grid.addWidget( self.button_startstop , 0,0 , 1,3)
@@ -122,10 +128,10 @@ class Preview(QWidget):
         grid.addWidget( self.fps_input        , 1,3)
         grid.addWidget( QLabel('value max:')  , 1,4)
         grid.addWidget( self.qlabl_max        , 1,5)
-        grid.addWidget( self.exposure_label   , 2,0)
-        grid.addWidget( self.exposure_slider  , 2,1 , 1,5)
+        grid.addWidget(QLabel('Exposure (ms):'),2,0)
+        grid.addWidget( self.exposure_spinb   , 2,1)
+        grid.addWidget( self.exposure_slider  , 2,2 , 1,4)
         self.layout.addLayout(grid)
-        self.layout.addWidget(self.image_view)
         self.layout.addWidget(self.view_layout)
         grid      = QGridLayout()
         grid.addWidget(self.button_acquire      , 0,0 , 1,3)
@@ -165,8 +171,8 @@ class Preview(QWidget):
         # --- image  widget --- #
         self.image_view     = pg.ImageView()
         # --- plot layout --- #
-        self.view_layout    = pg.GraphicsLayoutWidget()
-        self.plot_hist      = self.view_layout.addPlot()
+        self.hist_layWidget = pg.GraphicsLayoutWidget()
+        self.plot_hist      = self.hist_layWidget.addPlot()
         self.plot_hist.setXLink( self.image_view.getView() )
         if self.normalise_hist:
             self.plot_hist.setYRange(0, 1)
@@ -181,11 +187,14 @@ class Preview(QWidget):
         self.hidePlotButtons()
         self.image_view.getHistogramWidget().item.setHistogramRange(0,255) #not working when update
         # ---  --- #
-        self.view_layout.setMinimumWidth(800)
-        self.view_layout.setMinimumHeight(200)
-        self.image_view.setMinimumWidth(800)
-        self.image_view.setMinimumHeight(400)
+        self.image_view.setMinimumWidth(400)
+        self.image_view.setMinimumHeight(200)
+        self.hist_layWidget.setMinimumWidth(400)
+        self.hist_layWidget.setMinimumHeight(100)
         # ---  --- #
+        self.view_layout = QSplitter(PyQt5.QtCore.Qt.Vertical)
+        self.view_layout.addWidget(self.image_view)
+        self.view_layout.addWidget(self.hist_layWidget)
 
     def hideHistogram(self):
         self.image_view.ui.histogram.hide()
@@ -235,10 +244,17 @@ class Preview(QWidget):
             ydata = ydata/np.max(ydata)
         self.data_hist.setData(ydata)
 
+    def update_slider(self):
+        self.exposure_slider.setValue(self.exposure_spinb.value()*100)
+        self.update_exposure()
+
+    def update_spinbox(self):
+        self.exposure_spinb.setValue(float(self.exposure_slider.value())/100)
+        self.update_exposure()
+
     def update_exposure(self):
-        exp_val = self.exposure_slider.value()
+        exp_val = self.exposure_spinb.value()
         self.camera.setExposure( exp_val )
-        self.exposure_label.setText( 'Exposure time: {: 2.2f} ms'.format(self.exposure_slider.value()) )
 
     def acquireFrame(self):
         wasOn = self.isOn

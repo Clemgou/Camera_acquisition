@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+'''
+Compilation of different works.
 
+Many of the method in the Camera class are adaptation of the work of Éric Piel, found at:
+	https://github.com/delmic/odemis/blob/master/src/odemis/driver/ueye.py
+'''
 
 #########################################################################################################################
 # IMPORTATION
@@ -45,6 +50,15 @@ class Camera:
         def __str__(self):
             return "Err: " + str(self.error_code)
     # ~~~~~~~~~~~~~~~~~~~~~~~~ #
+    class CAMINFO(ctypes.Structure):
+        _fields_ = [("SerNo"   , ctypes.c_char * 12),
+                    ("ID"      , ctypes.c_char * 20), # manufacturer
+                    ("Version" , ctypes.c_char * 10),
+                    ("Date"    , ctypes.c_char * 12),
+                    ("Select"  , ctypes.c_uint8    ),
+                    ("Type"    , ctypes.c_uint8    ),
+                    ("Reserved", ctypes.c_char * 8 )]
+    # ~~~~~~~~~~~~~~~~~~~~~~~~ #
     def __init__(self, cam_id=0, log=None, fps=10., default=True):
         self.cam_id  = cam_id
         self.log     = log
@@ -82,16 +96,31 @@ class Camera:
                 self.cam = None
                 self.isCameraInit = False
 
-    def __str__(self):
-        return None
+    def __info__(self):
+        cam_info = self.CAMINFO()
+        ueye.is_GetCameraInfo(self.cam, ctypes.byref(cam_info))
+        # ---  --- #
+        info_display  = ''
+        info_display += '\nSerNo   : {}'.format(cam_info._fields_[0].value)
+        info_display += '\nID      : {}'.format(cam_info._fields_[1].value)
+        info_display += '\nVersion : {}'.format(cam_info._fields_[2].value)
+        info_display += '\nDate    : {}'.format(cam_info._fields_[3].value)
+        info_display += '\nSelect  : {}'.format(cam_info._fields_[4].value)
+        info_display += '\nType    : {}'.format(cam_info._fields_[5].value)
+        info_display += '\nReserved: {}'.format(cam_info._fields_[6].value)
+        return info_display
 
     def acquire_movie(self, num_frames):
         '''
         Return the list of frame array that consitutes the movie.
         '''
+        self.capture_video()
+        # ---  --- #
         movie = []
         for _ in range(num_frames):
             movie.append(self.get_frame())
+        # ---  --- #
+        self.stop_video()
         return movie
 
     def addToLog(self, txt):
@@ -223,11 +252,22 @@ class Camera:
         self.colorMode = colormode
         self.set_colormode()
 
+    def getExposure(self):
+        '''
+        Exposure time in ms.
+        '''
+        val_formated = ctypes.c_double(0)
+        val_size     = ctypes.c_int32( ctypes.sizeof(val_formated) )
+        hasWorked = ueye.is_Exposure(self.cam, ueye.IS_EXPOSURE_CMD_GET_EXPOSURE, val_formated, val_size)
+        self.check( hasWorked, 'is_Exposure')
+        return val_formated.value()
+        #self.addToLog('is_Exposure has worked: {0}\n Value of exposure is: {1}, of size {2}.\nWanted value is: {3}'.format(hasWorked, val_formated, val_size, exp_val))
+
     def setExposure(self, exp_val):
         '''
         Exposure time in ms.
         '''
-        val_formated = ctypes.c_double( int(exp_val) )
+        val_formated = ctypes.c_double( float(exp_val) )
         val_size     = ctypes.c_int32( ctypes.sizeof(val_formated) )
         hasWorked = ueye.is_Exposure(self.cam, ueye.IS_EXPOSURE_CMD_SET_EXPOSURE, val_formated, val_size)
         self.check( hasWorked, 'is_Exposure')
@@ -237,6 +277,36 @@ class Camera:
         current_gain = ueye.is_SetHardwareGain(self.cam, ueye.IS_GET_MASTER_GAIN, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER)
         hasWorked    = ueye.is_SetHardwareGain(self.cam, gain_val               , ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER)
         self.check( hasWorked, 'is_SetHardwareGain')
+
+
+    def GetFrameTimeRange(self):
+        """
+        Note: depends on the pixel clock settings
+        return (2 floats): min/max duration between each frame in s
+        """
+        ftmn = ctypes.c_double()  # in s
+        ftmx = ctypes.c_double()
+        ftic = ctypes.c_double()
+        ueye.is_GetFrameTimeRange(self.cam, ctypes.byref(ftmn), ctypes.byref(ftmx), ctypes.byref(ftic))
+        return ftmn.value, ftmx.value
+
+    def SetFrameRate(self, fr):
+        """
+        Note: values out of range are automatically clipped
+        fr (0>float): framerate (in Hz) to be set
+        return (0>float): actual framerate applied
+        """
+        newfps = ctypes.c_double()
+        ueye.is_SetFrameRate(self.cam, ctypes.c_double(fr), ctypes.byref(newfps))
+        return newfps.value
+
+    def GetPixelClock(self):
+        """
+        return (0<int): the pixel clock in MHz
+        """
+        pc = ctypes.c_uint32()
+        ueye.is_PixelClock(self.cam, ueye.PIXELCLOCK_CMD_GET, ctypes.byref(pc), ctypes.sizeof(pc))
+        return pc.value
 
 #########################################################################################################################
 # CODE

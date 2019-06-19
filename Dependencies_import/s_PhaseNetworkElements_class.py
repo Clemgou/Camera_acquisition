@@ -419,7 +419,7 @@ class PhaseNetworkElements(QWidget):
         for key in self.dicmultiplot:
             plot = self.dicmultiplot[key][0]
             plot.setFullData( self.data_hist.xData ) #!! indeed since the histogram is vertical, the data are in the x axis !!
-            plot.setLengthMax( self.samplingtime.value()*self.camera_view.fps )
+            plot.setLengthMax( int(self.samplingtime.value()*self.camera_view.fps) )
             plot.updatePlot()
         # ---  --- #
         if self.button_plot_lissajs.isChecked():# if self.doLissajous:
@@ -454,7 +454,7 @@ if __name__ == '__main__':
     camera   = Camera(cam_id=0)
     if not camera.isCameraInit:
         camera = SimuCamera(0, directory_path=dir_path)
-        camera.__str__()
+        camera.__info__()
 
     app = QApplication([])
     start_window = PhaseNetworkElements(camera)

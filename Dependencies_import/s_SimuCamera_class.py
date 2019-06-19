@@ -43,7 +43,7 @@ class SimuCamera:
             self.close_camera()
         # ---  --- #
         self.lastindx   = 0
-        self.last_frame = None
+        self.frame = None
 
     def addToLog(self, txt):
         if self.log != None:
@@ -51,7 +51,7 @@ class SimuCamera:
         else:
             print(txt)
 
-    def __str__(self):
+    def __info__(self):
         self.addToLog('Current directory path      : {}'.format(self.viewpath))
         self.addToLog('Current image index         : {}'.format(self.lastindx))
         self.addToLog('Number of image in directory: {}'.format(self.viewnbr))
@@ -61,18 +61,18 @@ class SimuCamera:
         self.colorMode = colormode
 
     def get_frame(self):
-        self.last_frame = cv2.imread(self.viewpath+self.viewlist[self.lastindx])
+        self.frame = cv2.imread(self.viewpath+self.viewlist[self.lastindx])
         self.lastindx   = (self.lastindx+1)%self.viewnbr
         # ---  --- #
         if self.colorMode != 0:
             if   self.colorMode=='Grey' or self.colorMode==1:
-                self.last_frame = cv2.cvtColor(self.last_frame, cv2.COLOR_BGR2GRAY)
+                self.frame = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
             elif self.colorMode=='HSV'  or self.colorMode==2:
-                self.last_frame = cv2.cvtColor(self.last_frame, cv2.COLOR_BGR2HSV)
+                self.frame = cv2.cvtColor(self.frame, cv2.COLOR_BGR2HSV)
             else:
                 self.addToLog('mode argument not recognised.')
         # ---  --- #
-        return self.last_frame
+        return self.frame
 
     def acquire_movie(self, num_frames):
         movie = []

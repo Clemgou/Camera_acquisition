@@ -24,9 +24,10 @@ import pyqtgraph as pg
 
 from s_LogDisplay_class               import LogDisplay
 from s_Workers_class                  import *
-from s_ToolObjects_class              import GaussianFit
+from s_ToolObjects_class              import GaussianFit, SpanObject
 from s_CameraDisplay_class            import CameraDisplay
 from s_SimuCamera_class               import SimuCamera
+from s_Camera_class                   import Camera
 
 #########################################################################################################################
 # FUNCTIONS
@@ -61,15 +62,17 @@ class DCMeasurement(QWidget):
         # ---  --- #
         self.layout      = QVBoxLayout(self)
         # --- guassian fit init --- #
+        self.dic_spanfitting = {}
         self.gaussianfit     = GaussianFit(log=self.log)
         self.gaussian_plots  = {}
         self.fittingactivate = QCheckBox()
         self.fittingactivate.setTristate(False)
         self.fittingactivate.stateChanged.connect(self.acceptOrNot)
+        self.fittingactivate.stateChanged.connect(self.fittingActivationDeactivation)
         # --- init frames --- #
         self.initView()
-        self.initParameterFittingFrame()
         self.initDisplayFittingFrame()
+        self.initParameterFittingFrame()
         self.relativeHeightsLayout()
         # --- layout --- #
         self.splitter.addWidget( self.viewFrame )
@@ -82,6 +85,8 @@ class DCMeasurement(QWidget):
         self.setLayout(self.layout)
         # ---  --- #
         self.fittingtimer.start()
+        self.setXdataPoints()
+        self.setFittingMethod()
 
     def initView(self):
         self.camera_view     = CameraDisplay(camera=self.camera, log=self.log)
@@ -158,31 +163,43 @@ class DCMeasurement(QWidget):
         self.frqcyfitting     = QSpinBox()
         self.frqcyfitting.setRange(1,12)
         self.frqcyfitting.setValue(10)
+        self.fitting_xdataNbre= QSpinBox()
+        self.fitting_xdataNbre.setRange(100, 5e3)
+        self.fitting_xdataNbre.setValue(10**3)
+        self.fitting_param_dspl= QTableWidget()
+        self.fitting_param_dspl.setRowCount(3)
         # ---  --- #
         self.fittingtimer.setInterval(self.frqcyfitting.value())
         # --- connections --- #
-        self.modeselect.currentIndexChanged.connect(self.changeMode)
+        self.modeselect.currentIndexChanged.connect(self.setFittingMethod)
         self.choosedirectory.clicked.connect(self.setNewSaveFile)
         self.button_addData.clicked.connect(self.addDataToFile)
-        self.button_makefit.clicked.connect(self.updatePlots)
         self.frqcyfitting.valueChanged.connect(self.setFittingRate)
         self.fittingtimer.timeout.connect(self.updatePlots)
+        self.fitting_xdataNbre.valueChanged.connect( self.setXdataPoints )
+        self.button_makefit.clicked.connect(self.singleShotFittingPlot)
+        self.nbrpeak.valueChanged.connect(self.initPeakByPeakFitting)
         # --- make layout --- #
         self.paramfittingframe = QFrame()
         self.param_grid        = QGridLayout()
         self.param_grid.addWidget(QLabel('Activate fitting '), 0,0)
         self.param_grid.addWidget( self.fittingactivate      , 0,1)
-        self.param_grid.addWidget(QLabel('Peak nbr:')        , 0,2)
-        self.param_grid.addWidget( self.peakcount_lab        , 0,3)
-        self.param_grid.addWidget(QLabel('Fitting rate:')    , 0,4)
-        self.param_grid.addWidget( self.frqcyfitting         , 0,5)
-        self.param_grid.addWidget( QLabel('Peak position:')  , 1,0)
-        self.param_grid.addWidget( QLabel('Peak amplitudes:'), 2,0)
-        self.param_grid.addWidget( QLabel('Relative diff:')  , 3,0)
+        self.param_grid.addWidget(QLabel('Fitting rate:')    , 0,2)
+        self.param_grid.addWidget( self.frqcyfitting         , 0,3)
+        self.param_grid.addWidget(QLabel('Fitting Sampling number'), 0,4)
+        self.param_grid.addWidget( self.fitting_xdataNbre    , 0,5)
+        self.param_grid.addWidget(QLabel('Peak nbr:')        , 1,0)
+        self.param_grid.addWidget( self.peakcount_lab        , 1,1)
+        self.param_grid.addWidget(QLabel('Fitting method:')  , 1,2)
+        self.param_grid.addWidget( self.modeselect           , 1,3)
+        self.param_grid.addWidget( self.button_makefit       , 1,4)
+        self.param_grid.addWidget( self.fitting_param_dspl   , 2,0 , 3,5)
+        self.param_grid.setRowMinimumHeight(2, 35)
+        self.param_grid.setRowMinimumHeight(3, 35)
+        self.param_grid.setRowMinimumHeight(4, 35)
         self.updateParamLayout()
-        self.param_grid.addWidget(self.choosedirectory       , 4,0)
-        self.param_grid.addWidget( self.savefile_name        , 4,1 , 1,6)
-        #self.param_grid.addWidget( self.button_makefit       , 5,0 , 1,6)
+        self.param_grid.addWidget(self.choosedirectory       , 5,0)
+        self.param_grid.addWidget( self.savefile_name        , 5,1 , 1,6)
         self.param_grid.addWidget( self.button_addData       , 6,0 , 1,6)
         for i in range(self.param_grid.rowCount()+1):
             self.param_grid.setRowStretch(i, 1)
@@ -192,24 +209,39 @@ class DCMeasurement(QWidget):
     def relativeHeightsLayout(self):
         self.matrelatFrame = QFrame()
         self.matrelat_layout = QGridLayout()
+        self.matrelat_layout.setColumnMinimumWidth(0, 200)
         n = 0
         self.matrelat = np.zeros([n,n])
         numbering = np.arange(n)
-        # --- make layout --- #
-        if False:
-            self.matrelat_layout.addWidget( QLabel('Relative height: Mij = Ii/Ij'), 0,0 , 1,2)
-            self.matrelat_layout.addWidget( QLabel(str(numbering))    , 1,0 , 1,2)
-            self.matrelat_layout.addWidget( QLabel(str(self.matrelat)), 2,0 , 1,2)
         # --- with qtable --- #
         self.table = QTableWidget()
         self.matrelat_layout.addWidget(self.table)
         # ---  --- #
         self.matrelatFrame.setLayout( self.matrelat_layout )
 
+    def initPeakByPeakFitting(self):
+        if self.modeselect.currentIndex() == 0:
+            return None
+        # --- reset spans --- #
+        self.removeAllSpans()
+        # ---  --- #
+        for i in range( self.nbrpeak.value() ):
+            newspan = SpanObject(name='span_{}'.format(i), orientation='vertical', log=self.log, pos_init=i*50 +1)
+            self.dic_spanfitting[newspan.name] = newspan
+            self.plot_hist.addItem( newspan.span )
+        self.gaussianfit.setSpanDictionary( self.dic_spanfitting )
+
+    def removeAllSpans(self):
+        KEYS = list( self.dic_spanfitting.keys() )
+        for key in KEYS:
+            span_to_remove = self.dic_spanfitting[key]
+            self.plot_hist.removeItem( span_to_remove.span )
+            del self.dic_spanfitting[key]
+
     def setNewSaveFile(self):
         # --- stop timers to avoid over load --- #
-        wasOn = self.isOn
-        self.stop_continuous_view()
+        wasOn = self.camera_view.isOn
+        self.camera_view.stop_continuous_view()
         self.fittingtimer.stop()
         # ---  --- #
         filename = self.savefile.getSaveFileName()
@@ -220,12 +252,12 @@ class DCMeasurement(QWidget):
         if self.fittingactivate.checkState() != 0:
             self.fittingtimer.start()
         if wasOn:
-            self.start_continuous_view()
+            self.camera_view.start_continuous_view()
 
     def addDataToFile(self):
         # --- stop timers to avoid over load --- #
-        wasOn = self.isOn
-        self.stop_continuous_view()
+        wasOn = self.camera_view.isOn
+        self.camera_view.stop_continuous_view()
         self.fittingtimer.stop()
         # ---  --- #
         f = open(self.savefile_name.text(), 'a')
@@ -244,19 +276,34 @@ class DCMeasurement(QWidget):
         if self.fittingactivate.checkState() != 0:
             self.fittingtimer.start()
         if wasOn:
-            self.start_continuous_view()
+            self.camera_view.start_continuous_view()
 
     def acceptOrNot(self, i):
         if type(self.data_hist.xData)==type(None):
             self.fittingactivate.setCheckState(0)
-        return None
+        # ---  --- #
+        self.setXdataPoints()
 
-    def changeMode(self):
+    def fittingActivationDeactivation(self, i):
+        if   self.fittingactivate.checkState() == 0:
+            self.fittingtimer.stop()
+        elif self.fittingactivate.checkState() == 2:
+            self.fittingtimer.start()
+
+    def setFittingMethod(self):
         ind = self.modeselect.currentIndex()
         if   ind == 0:
             self.gaussianfit.setMode('all')
+            self.button_makefit.setEnabled(False)
+            self.button_makefit.setFlat(True)
+            self.fittingactivate.setCheckState(2)
+            self.removeAllSpans()
         elif ind == 1:
             self.gaussianfit.setMode('pbp')
+            self.button_makefit.setEnabled(True)
+            self.button_makefit.setFlat(False)
+            self.fittingactivate.setCheckState(0)
+            self.initPeakByPeakFitting()
 
     def setFPS(self):
         self.fps = self.fps_input.value()
@@ -286,33 +333,36 @@ class DCMeasurement(QWidget):
             item = layout.itemAt(i)
             layout.removeItem( item )
 
+    def setXdataPoints(self):
+        if type(self.data_hist.xData) != type(None):
+            self.xdataFit = np.linspace( np.min(self.data_hist.xData), np.max(self.data_hist.xData), self.fitting_xdataNbre.value())
+        else:
+            self.xdataFit = np.linspace( 0,100, self.fitting_xdataNbre.value() )
+
     def updateParamLayout(self):
-        # --- delete all gaussian curves --- #
-        col_nbr = self.param_grid.columnCount()
-        for i in range(1,col_nbr):
-            for j in [1,2,3]:
-                item = self.param_grid.itemAtPosition(j,i)
+        try:
+            n = self.param_peak.shape[0]
+        except:
+            self.log.addText('self.peakcount most likely not defined yet')
+            return None
+        self.fitting_param_dspl.clear()
+        self.fitting_param_dspl.setItem(0,0 , QTableWidgetItem( 'Peak position' ) )
+        self.fitting_param_dspl.setItem(1,0 , QTableWidgetItem( 'Peak amplitudes' ) )
+        self.fitting_param_dspl.setItem(2,0 , QTableWidgetItem( 'Relative diff' ) )
+        self.fitting_param_dspl.setColumnCount(n+1)
+        # ---  --- #
+        if not n >=1:
+            return None
+        for i in range(n):
                 try:
-                    item.widget().setParent(None)
+                    self.fitting_param_dspl.setItem(0,i+1 , QTableWidgetItem( str(round(self.param_peak[i,0], 3)) ) )
+                    self.fitting_param_dspl.setItem(1,i+1 , QTableWidgetItem( str(round(self.param_peak[i,1], 3)) ) )
+                    self.fitting_param_dspl.setItem(2,i+1 , QTableWidgetItem( str(round(self.param_peak[i,2], 3)) ) )
                 except:
                     pass
-        # --- display style: each value is displayed on a QLabel --- #
-        if False:
-            for i in range(len(self.param_peak)):
-                self.param_grid.addWidget( QLabel(str(round(self.param_peak[i,0],3)))  , 1,i+1)
-                self.param_grid.addWidget( QLabel(str(round(self.param_peak[i,1],3)))  , 2,i+1)
-                self.param_grid.addWidget( QLabel(str(round(self.param_peak[i,2],3)))  , 3,i+1)
-        # --- display style: all values are displayed in a array given to 1 Qlabel --- #
-        if len(self.param_peak) >= 1:
-            labl = str( self.param_peak[:,0].round(3) )
-            self.param_grid.addWidget( QLabel(labl)  , 1,1 , 1,5)
-            labl = str( self.param_peak[:,1].round(3) )
-            self.param_grid.addWidget( QLabel(labl)  , 2,1 , 1,5)
-            labl = str( self.param_peak[:,2].round(3) )
-            self.param_grid.addWidget( QLabel(labl)  , 3,1 , 1,5)
 
     def updateRelativeHeightMatrix(self):
-        n = self.peakcount
+        n = self.param_peak.shape[0]
         self.table.clear()
         self.table.setRowCount(n)
         self.table.setColumnCount(n)
@@ -321,26 +371,18 @@ class DCMeasurement(QWidget):
         if not n >=1:
             return None
         for i in range(n):
-            #self.matrelat[i,:] = self.param_peak[:,1]/self.param_peak[i,1]
             for j in range(n):
                 try:
                     self.table.setItem(i,j , QTableWidgetItem( str(round(self.param_peak[i,1]/self.param_peak[j,1], 3)) ) )
                 except:
                     pass
-        # --- update layout --- #
-        if False:
-            item1 = self.matrelat_layout.itemAtPosition(1,0).widget()
-            item2 = self.matrelat_layout.itemAtPosition(2,0).widget()
-            item1.setText( str( np.arange(n) ) )
-            item2.setText( str( self.matrelat.round(3) ) )
-            #item.setParent(None)
-            #self.matrelat_layout.addWidget( QLabel(str(self.matrelat)), 2,0 , 1,2)
+        #self.matrelat_layout.setRowMinimumHeight(0, 35*n)
 
     def setLinkToCameraTimer(self):
         if   self.histrealtime.checkState() == 0:
-            self.camera_view.timer.timeout.disconnect(self.updatePlotHistogram)
+            self.camera_view.frame_updated.disconnect(self.updatePlotHistogram)
         elif self.histrealtime.checkState() == 2:
-            self.camera_view.timer.timeout.connect(self.updatePlotHistogram)
+            self.camera_view.frame_updated.connect(self.updatePlotHistogram)
 
     def updatePlotHistogram(self):
         frame = self.camera_view.frame
@@ -379,8 +421,7 @@ class DCMeasurement(QWidget):
         self.clearGaussianFits()
         # ---  --- #
         for key in self.gaussianfit.dic_gauss:
-            x     = self.data_hist.xData
-            #self.log.addText('gaussian param before plot: \n'+str(self.gaussianfit.dic_gauss[key]))
+            x     = self.xdataFit #self.data_hist.xData
             y_fit = self.gaussianfit.gaussian(x, *self.gaussianfit.dic_gauss[key])
             self.gaussian_plots[key] = pg.PlotCurveItem(x=x,y=y_fit, pen='r')
         # ---  --- #
@@ -412,7 +453,6 @@ class DCMeasurement(QWidget):
         self.updateParamLayout()
 
     def getParamFit(self):
-        #self.quickPeakCount()
         # --- fitting --- #
         self.gaussianfit.setXData(self.data_hist.xData)
         self.gaussianfit.setYData(self.data_hist.yData)
@@ -422,56 +462,29 @@ class DCMeasurement(QWidget):
         self.gaussianfit.setSTD(        self.param_peak[:,2])
         # ---  --- #
         self.gaussianfit.makeGaussianFit()
+        # ---  --- #
+        self.param_peak = self.gaussianfit.param
+
+
 
     def acquireFrame(self):
-        frame = self.camera.last_frame
-        plt.imshow(frame, cmap=self.cmap)
-        plt.show()
-
-    def startStop_continuous_view(self):
-        if  self.isOn:
-            self.stop_continuous_view()
-        else:
-            self.start_continuous_view()
-
-    def start_continuous_view(self):
-        if   True:
-            self.start_continuous_view_qtimer()
-        elif False:
-            self.start_continuous_view_qthread()
+        wasOn = self.isOn
+        if self.isOn:
+            self.startStop_continuous_view()
         # ---  --- #
-        self.isOn = True
-
-    def stop_continuous_view(self):
-        if   True:
-            self.stop_continuous_view_qtimer()
-        elif False:
-            self.stop_continuous_view_qthread()
+        frame = self.camera.frame
+        if type(frame) != type(None):
+            plt.imshow(frame, cmap=self.cmap)
+            plt.show()
         # ---  --- #
-        self.isOn = False
+        if wasOn:
+            self.startStop_continuous_view()
 
-    def start_continuous_view_qthread(self):
-        # ---  --- #
-        self.thread = QThread()
-        self.thread.setTerminationEnabled(True)
-        # --- connect --- #
-        self.contview.moveToThread(self.thread)
-        self.thread.started.connect(self.contview.startFeed)
-        self.contview.newshot.connect(self.update_image)
-        self.contview.finished.connect(self.thread.quit)
-        # ---  --- #
-        self.thread.start()
-
-    def stop_continuous_view_qthread(self):
-        self.contview.stopFeed()
-
-    def start_continuous_view_qtimer(self):
-        # ---  --- #
-        self.timer.timeout.connect(self.update_image)
-        self.timer.start(1e3/self.fps) #ms
-
-    def stop_continuous_view_qtimer(self):
-        self.timer.stop()
+    def singleShotFittingPlot(self):
+        self.getParamFit()
+        self.plotGaussianFit()
+        self.updateParamLayout()
+        self.updateRelativeHeightMatrix()
 
 #########################################################################################################################
 # CODE
@@ -482,7 +495,7 @@ if __name__ == '__main__':
     camera   = Camera(cam_id=0)
     if not camera.isCameraInit:
         camera = SimuCamera(0, directory_path=dir_path)
-        camera.__str__()
+        camera.__info__()
 
     app = QApplication([])
     start_window = DCMeasurement(camera)

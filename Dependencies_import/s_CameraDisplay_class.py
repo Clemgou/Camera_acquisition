@@ -10,10 +10,9 @@ import sys
 import PyQt5
 from PyQt5.QtWidgets import QWidget, QFrame, QApplication
 from PyQt5.QtWidgets import QVBoxLayout,QHBoxLayout,QSplitter,QGridLayout
-from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QSpinBox
+from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QSpinBox, QDoubleSpinBox, QSlider
 from PyQt5.QtCore    import Qt, QThread, QTimer, QObject, pyqtSignal, pyqtSlot, QRect
 from PyQt5.QtGui     import QPainter
-
 
 import numpy as np
 import pyqtgraph as pg
@@ -32,6 +31,8 @@ import time
 #########################################################################################################################
 
 class CameraDisplay(QWidget):
+    frame_updated = pyqtSignal()
+
     def __init__(self, camera=None, log=None, fps=10.):
         super().__init__()
         # ---  --- #
@@ -54,6 +55,8 @@ class CameraDisplay(QWidget):
         self.initColorDic()
         # ---  --- #
         self.initUI()
+        # ---  --- #
+        self.camera.setExposure( self.exposure_slider.value() )
 
     def initUI(self):
         # ---  --- #
@@ -67,10 +70,20 @@ class CameraDisplay(QWidget):
         self.fps_input   = QSpinBox()
         self.fps_input.setRange(1, 48)
         self.fps_input.setValue(self.fps)
+        self.exposure_spinb   = QDoubleSpinBox()
+        min_, max_ = 0.10, 99.0
+        self.exposure_spinb.setRange(min_, max_)
+        self.exposure_spinb.setSingleStep(0.01)
+        self.exposure_spinb.setValue(12.5)
+        self.exposure_slider  = QSlider(Qt.Horizontal)
+        self.exposure_slider.setRange(min_*100, max_*100)
+        self.exposure_slider.setValue(self.exposure_spinb.value()*100)
         # --- connections --- #
         self.button_startstop.clicked.connect(self.startStop_continuous_view)
         self.fps_input.valueChanged.connect(self.setFPS)
         self.button_nextFrame.clicked.connect( self.nextFrame )
+        self.exposure_slider.valueChanged.connect( self.update_spinbox )
+        self.exposure_spinb.valueChanged.connect( self.update_slider )
         # --- layout --- #
         grid = QGridLayout()
         grid.addWidget( self.button_startstop, 0,0)
@@ -79,6 +92,9 @@ class CameraDisplay(QWidget):
         grid.addWidget( self.fps_input       , 0,3)
         grid.addWidget( QLabel('value max:') , 0,5)
         grid.addWidget( self.qlabl_max       , 0,6)
+        grid.addWidget(QLabel('Exposure (ms):'),1,0)
+        grid.addWidget( self.exposure_spinb   , 1,1)
+        grid.addWidget( self.exposure_slider  , 1,2 , 1,5)
         self.layout.addLayout(grid)
         self.layout.addWidget(self.image_view)
         self.setLayout(self.layout)
@@ -129,6 +145,19 @@ class CameraDisplay(QWidget):
         self.frame = self.camera.get_frame()
         self.qlabl_max.setText( str(np.max(self.frame)) )
         self.image_view.setImage(self.frame.T, autoHistogramRange=False, autoLevels=False)
+        self.frame_updated.emit()
+
+    def update_slider(self):
+        self.exposure_slider.setValue(self.exposure_spinb.value()*100)
+        self.update_exposure()
+
+    def update_spinbox(self):
+        self.exposure_spinb.setValue(float(self.exposure_slider.value())/100)
+        self.update_exposure()
+
+    def update_exposure(self):
+        exp_val = self.exposure_spinb.value()
+        self.camera.setExposure( exp_val )
 
     def nextFrame(self):
         wasOn = self.isOn
@@ -202,7 +231,7 @@ if __name__ == '__main__':
     camera   = Camera(cam_id=0)
     if not camera.isCameraInit:
         camera = SimuCamera(0, directory_path=dir_path)
-        camera.__str__()
+        camera.__info__()
 
     app = QApplication([])
     start_window = CameraDisplay(camera)
