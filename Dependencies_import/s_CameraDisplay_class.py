@@ -145,10 +145,9 @@ class CameraDisplay(QWidget):
         self.default_camera = camera
         self.simu_camera    = SimuCamera(directory_path=os.getcwd(), log=self.log)
         # ---  --- #
-        self.camera = self.default_camera 
-        self.camera.set_colormode()
-        self.camera.set_aoi(0,0, 1280,1024)
-        self.camera.alloc()
+        self.camera = self.default_camera
+        if not self.camera.isCameraInit:
+            self.camera.__init__()
 
     def hideHistogram(self):
         self.image_view.ui.histogram.hide()

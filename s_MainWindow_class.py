@@ -161,6 +161,9 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         Remove the Tab of index index (integer).
         '''
         self.centraltab.removeTab(index)
+        self.camera.stop_video()
+        self.camera.close_camera()
+        self.log.addText('Is camera closed ? {}'.format( not self.camera.isCameraInit ) )
 
     def getFile(self):
         '''
@@ -262,8 +265,11 @@ class MainWindow(QMainWindow): # inherits from the QMainWindow class
         self.centraltab.setCurrentIndex( newtabindex )
 
     def closeMainWindow(self):
-        self.camera.stop_video()
-        self.camera.close_camera()
+        try:
+            self.camera.stop_video()
+            self.camera.close_camera()
+        except:
+            pass
         print('Is camera closed ? {}'.format( not self.camera.isCameraInit ) )
         self.close()
 

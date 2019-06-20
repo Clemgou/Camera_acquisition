@@ -55,17 +55,17 @@ class Preview(QWidget):
             if not self.camera.isCameraInit:
                 self.camera = SimuCamera(0, directory_path=dir_path, log=self.log)
                 self.camera.__info__()
+        elif not self.camera.isCameraInit:
+            self.camera.__init__(cam_id=0, log=self.log)
         # ---  --- #
         self.contview  = ContinuousView(fps=self.fps)
         self.timer     = pg.QtCore.QTimer() #QTimer()# pg.QtCore.QTimer()
         self.qlabl_max = QLabel()
         self.isOn      = False
-        # --- color acuisition --- #
-        self.initCamera()
         # ---  --- #
         self.initUI()
         # ---  --- #
-        self.camera.setExposure( self.image_widget.exposure_spinb.value() )
+        self.camera.setExposure( self.image_widget.exposure.value() )
 
     def initUI(self):
         # ---  --- #
@@ -117,11 +117,6 @@ class Preview(QWidget):
         self.setLayout(self.layout)
         # ---  --- #
         self.update_timer = QTimer()
-
-    def initCamera(self):
-        self.camera.set_colormode()
-        self.camera.set_aoi(0,0, 1280,1024)
-        self.camera.alloc()
 
     def initView(self):
         self.image_widget = CameraDisplay(camera=self.camera, log=self.log)

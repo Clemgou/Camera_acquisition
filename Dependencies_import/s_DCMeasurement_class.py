@@ -52,6 +52,8 @@ class DCMeasurement(QWidget):
         self.fittingtimer = pg.QtCore.QTimer()
         # --- main attriute --- #
         self.camera    = camera
+        if not self.camera.isCameraInit:
+            self.camera.__init__(cam_id=0, log=self.log)
         self.contview  = ContinuousView(fps=self.fps)
         self.qlabl_max = QLabel()
         # ---  --- #

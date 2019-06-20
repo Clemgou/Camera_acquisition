@@ -30,6 +30,7 @@ class SimuCamera:
     def initialize(self):
         try:
             self.viewlist = os.listdir(self.viewpath)
+            self.viewlist.sort()
             self.viewnbr  = len(self.viewlist)
             self.isCameraInit = True
         except:

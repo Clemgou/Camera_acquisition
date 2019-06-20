@@ -61,6 +61,11 @@ class Camera:
         # ---  --- #
         if default and self.isCameraInit:
             self.initDefault()
+        # ---  --- #
+        try:
+            self.log.addText('Camera initialized ? {}'.format(self.isCameraInit))
+        except:
+            pass
 
     def initialize(self):
         # --- using pyueye --- #
@@ -77,7 +82,9 @@ class Camera:
         self.isCameraInit = True
 
     def initDefault(self):
-        return None
+        self.set_colormode()
+        self.set_aoi(0,0, 1280,1024)
+        self.alloc()
 
     def close_camera(self):
         ret = None

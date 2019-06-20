@@ -50,6 +50,8 @@ class PhaseNetworkElements(QWidget):
         self.dicspan   = {}
         # --- main attriute --- #
         self.camera    = camera
+        if not self.camera.isCameraInit:
+            self.camera.__init__(cam_id=0, log=self.log)
         self.qlabl_max = QLabel()
         self.dataframe = np.zeros([10,10])
         # ---  --- #
