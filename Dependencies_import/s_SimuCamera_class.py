@@ -37,6 +37,7 @@ class SimuCamera:
             self.close_camera()
             self.isCameraInit = False
             return None
+        if self.viewpath[-1] != '/': self.viewpath+='/'
         # ---  --- #
         if self.viewnbr == 0:
             self.addToLog('Error: directory empty.')
@@ -90,6 +91,9 @@ class SimuCamera:
         self.isCameraInit = False
         return None
 
+    def setDirectoryPath(self, newdir_path):
+        self.viewpath = newdir_path
+
     def set_aoi(self, x,y,w,h):
         return None
 
@@ -99,10 +103,28 @@ class SimuCamera:
     def alloc(self):
         return None
 
+    def getExposure(self):
+        return 0
+
     def setExposure(self, exp_val):
         return None
 
     def setHarwareGain(self, gain_val):
+        return None
+
+    def getFrameTimeRange(self):
+        return 0, 0, 0
+
+    def getFrameRate(self):
+        return 0
+
+    def setFrameRate(self, fr):
+        return fr
+
+    def getPixelClock(self):
+        return 0
+
+    def setPixelClock(self, pxl_clck):
         return None
 
 ###################################################################################################################

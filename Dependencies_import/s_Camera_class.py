@@ -50,15 +50,6 @@ class Camera:
         def __str__(self):
             return "Err: " + str(self.error_code)
     # ~~~~~~~~~~~~~~~~~~~~~~~~ #
-    class CAMINFO(ctypes.Structure):
-        _fields_ = [("SerNo"   , ctypes.c_char * 12),
-                    ("ID"      , ctypes.c_char * 20), # manufacturer
-                    ("Version" , ctypes.c_char * 10),
-                    ("Date"    , ctypes.c_char * 12),
-                    ("Select"  , ctypes.c_uint8    ),
-                    ("Type"    , ctypes.c_uint8    ),
-                    ("Reserved", ctypes.c_char * 8 )]
-    # ~~~~~~~~~~~~~~~~~~~~~~~~ #
     def __init__(self, cam_id=0, log=None, fps=10., default=True):
         self.cam_id  = cam_id
         self.log     = log
@@ -97,17 +88,17 @@ class Camera:
                 self.isCameraInit = False
 
     def __info__(self):
-        cam_info = self.CAMINFO()
-        ueye.is_GetCameraInfo(self.cam, ctypes.byref(cam_info))
+        cam_info     =ueye.CAMINFO()
+        ueye.is_GetCameraInfo(self.cam, cam_info)
         # ---  --- #
         info_display  = ''
-        info_display += '\nSerNo   : {}'.format(cam_info._fields_[0].value)
-        info_display += '\nID      : {}'.format(cam_info._fields_[1].value)
-        info_display += '\nVersion : {}'.format(cam_info._fields_[2].value)
-        info_display += '\nDate    : {}'.format(cam_info._fields_[3].value)
-        info_display += '\nSelect  : {}'.format(cam_info._fields_[4].value)
-        info_display += '\nType    : {}'.format(cam_info._fields_[5].value)
-        info_display += '\nReserved: {}'.format(cam_info._fields_[6].value)
+        info_display +=   'Serial No: {}'.format(cam_info.SerNo)
+        info_display += '\nID       : {}'.format(cam_info.ID)
+        info_display += '\nVersion  : {}'.format(cam_info.Version)
+        info_display += '\nDate     : {}'.format(cam_info.Date)
+        info_display += '\nSelect   : {}'.format(cam_info.Select)
+        info_display += '\nType     : {}'.format(cam_info.Type)
+        info_display += '\nReserved : {}'.format(cam_info.Reserved)
         return info_display
 
     def acquire_movie(self, num_frames):
@@ -115,12 +106,14 @@ class Camera:
         Return the list of frame array that consitutes the movie.
         '''
         self.capture_video()
+        time.sleep(1.)
         # ---  --- #
         movie = []
         for _ in range(num_frames):
             movie.append(self.get_frame())
         # ---  --- #
         self.stop_video()
+        time.sleep(1.)
         return movie
 
     def addToLog(self, txt):
@@ -260,7 +253,7 @@ class Camera:
         val_size     = ctypes.c_int32( ctypes.sizeof(val_formated) )
         hasWorked = ueye.is_Exposure(self.cam, ueye.IS_EXPOSURE_CMD_GET_EXPOSURE, val_formated, val_size)
         self.check( hasWorked, 'is_Exposure')
-        return val_formated.value()
+        return val_formated.value
         #self.addToLog('is_Exposure has worked: {0}\n Value of exposure is: {1}, of size {2}.\nWanted value is: {3}'.format(hasWorked, val_formated, val_size, exp_val))
 
     def setExposure(self, exp_val):
@@ -275,11 +268,10 @@ class Camera:
 
     def setHarwareGain(self, gain_val):
         current_gain = ueye.is_SetHardwareGain(self.cam, ueye.IS_GET_MASTER_GAIN, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER)
-        hasWorked    = ueye.is_SetHardwareGain(self.cam, gain_val               , ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER)
+        hasWorked    = ueye.is_SetHardwareGain(self.cam, int(gain_val), ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER, ueye.IS_IGNORE_PARAMETER)
         self.check( hasWorked, 'is_SetHardwareGain')
 
-
-    def GetFrameTimeRange(self):
+    def getFrameTimeRange(self):
         """
         Note: depends on the pixel clock settings
         return (2 floats): min/max duration between each frame in s
@@ -287,26 +279,40 @@ class Camera:
         ftmn = ctypes.c_double()  # in s
         ftmx = ctypes.c_double()
         ftic = ctypes.c_double()
-        ueye.is_GetFrameTimeRange(self.cam, ctypes.byref(ftmn), ctypes.byref(ftmx), ctypes.byref(ftic))
-        return ftmn.value, ftmx.value
+        hasWorked = ueye.is_GetFrameTimeRange(self.cam, ftmn, ftmx, ftic)
+        self.check( hasWorked, 'getFrameTimeRange')
+        return ftmn.value, ftmx.value, ftic.value
 
-    def SetFrameRate(self, fr):
+    def getFrameRate(self):
+        fps = ctypes.c_double()
+        hasWorked = ueye.is_SetFrameRate(self.cam, ueye.IS_GET_FRAMERATE, fps)
+        self.check( hasWorked, 'getFrameRate')
+        return fps.value
+
+    def setFrameRate(self, fr):
         """
         Note: values out of range are automatically clipped
         fr (0>float): framerate (in Hz) to be set
         return (0>float): actual framerate applied
         """
         newfps = ctypes.c_double()
-        ueye.is_SetFrameRate(self.cam, ctypes.c_double(fr), ctypes.byref(newfps))
+        hasWorked = ueye.is_SetFrameRate(self.cam, ctypes.c_double(fr), newfps)
+        self.check( hasWorked, 'setFrameRate')
         return newfps.value
 
-    def GetPixelClock(self):
+    def getPixelClock(self):
         """
         return (0<int): the pixel clock in MHz
         """
         pc = ctypes.c_uint32()
-        ueye.is_PixelClock(self.cam, ueye.PIXELCLOCK_CMD_GET, ctypes.byref(pc), ctypes.sizeof(pc))
+        hasWorked = ueye.is_PixelClock(self.cam, ueye.IS_PIXELCLOCK_CMD_GET, pc, ctypes.sizeof(pc))
+        self.check( hasWorked, 'getPixelClock' )
         return pc.value
+
+    def setPixelClock(self, pxl_clck):
+        val_formated = ctypes.c_uint32(pxl_clck)
+        hasWorked = ueye.is_PixelClock(self.cam, ueye.IS_PIXELCLOCK_CMD_SET, val_formated, ctypes.sizeof(val_formated))
+        self.check( hasWorked, 'setPixelClock' )
 
 #########################################################################################################################
 # CODE
@@ -316,17 +322,32 @@ if __name__ == '__main__':
     print('STARTING')
     camera = Camera(default=False)
     print('IS CAMERA ON: ', camera.isCameraInit )
+    print('Camera info')
+    print(camera.__info__())
+    print('Set color mode and frame size')
     camera.set_colormode()
     camera.set_aoi(0,0, 1280, 1024)
-    #camera.set_aoi(0,0,  600, 600)
     print('Alloc')
     camera.alloc()
     print('Capture video')
     print(camera.capture_video())
-    #frame = camera.get_frame()
-    #print(type(frame))
+    frame = camera.get_frame()
+    print(type(frame))
+    print('Set Exposure')
+    camera.setExposure(12.5)
+    print(camera.getExposure())
+    print('Set Gain')
+    camera.setHarwareGain(0.)
+    print('Frame time range: ', camera.getFrameTimeRange() )
+    print('Set Frame rate')
+    print('frame rate we set: ', camera.setFrameRate(5) )
+    print('frame rate we get: ', camera.getFrameRate() )
+    print('Set pixel clock')
+    camera.setPixelClock(22)
+    print('Pixel Clock: ', camera.getPixelClock() )
+    print('Continuous view')
     p = 0
-    while True:
+    while False:
         time.sleep(1/10)
         if True:#camera.nextFrame():
             frame = camera.get_frame()

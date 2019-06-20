@@ -26,6 +26,7 @@ from s_Workers_class                  import *
 from s_Miscellaneous_functions        import *
 from s_SimuCamera_class               import SimuCamera
 from s_Camera_class                   import Camera
+from s_CameraDisplay_class            import CameraDisplay
 
 
 import time
@@ -60,12 +61,11 @@ class Preview(QWidget):
         self.qlabl_max = QLabel()
         self.isOn      = False
         # --- color acuisition --- #
-        self.initColorDic()
         self.initCamera()
         # ---  --- #
         self.initUI()
         # ---  --- #
-        self.camera.setExposure( self.exposure_slider.value() )
+        self.camera.setExposure( self.image_widget.exposure_spinb.value() )
 
     def initUI(self):
         # ---  --- #
@@ -76,13 +76,7 @@ class Preview(QWidget):
         self.button_acquire.setStyleSheet("background-color: orange")
         self.button_acq_movie = QPushButton('Acquire movie')
         self.button_acq_movie.setStyleSheet("background-color: orange")
-        self.button_startstop = QPushButton('Start/Stop')
-        self.button_startstop.setStyleSheet("background-color: red")
-        self.button_nextFrame = QPushButton('Next frame')
         # ---  --- #
-        self.fps_input        = QSpinBox()
-        self.fps_input.setRange(1, 48)
-        self.fps_input.setValue(self.fps)
         self.movie_frameNbre  = QSpinBox()
         self.movie_frameNbre.setMinimum(0)
         self.movie_frameNbre.setMaximum(1000)
@@ -102,37 +96,12 @@ class Preview(QWidget):
         self.histogram_mode   = QComboBox()
         self.histogram_mode.addItem('Normalise')
         self.histogram_mode.addItem('Raw')
-        self.exposure_spinb   = QDoubleSpinBox()
-        self.exposure_spinb.setRange(0.10, 99.0)
-        self.exposure_spinb.setSingleStep(0.01)
-        self.exposure_spinb.setValue(12.5)
-        self.exposure_slider  = QSlider(Qt.Horizontal)
-        self.exposure_slider.setRange(self.exposure_spinb.minimum()*100, self.exposure_spinb.maximum()*100)
-        self.exposure_slider.setValue(self.exposure_spinb.value()*100)
         # --- connections --- #
-        self.button_startstop.clicked.connect(self.startStop_continuous_view)
-        self.fps_input.valueChanged.connect(self.setFPS)
         self.button_acquire.clicked.connect(self.acquireFrame)
-        self.button_nextFrame.clicked.connect( self.nextFrame )
         self.button_acq_movie.clicked.connect( self.acquireMovie )
         self.histogram_mode.currentIndexChanged.connect( self.setHistogramMode )
-        self.exposure_slider.valueChanged.connect( self.update_spinbox )
-        self.exposure_spinb.valueChanged.connect( self.update_slider )
         # --- layout --- #
-        grid     = QGridLayout()
-        grid.addWidget( self.button_startstop , 0,0 , 1,3)
-        grid.addWidget( self.button_nextFrame , 0,3 , 1,3)
-        grid.addWidget( QLabel('Mode histogram:'), 1,0)
-        grid.addWidget( self.histogram_mode   , 1,1)
-        grid.addWidget( QLabel('fps :')       , 1,2)
-        grid.addWidget( self.fps_input        , 1,3)
-        grid.addWidget( QLabel('value max:')  , 1,4)
-        grid.addWidget( self.qlabl_max        , 1,5)
-        grid.addWidget(QLabel('Exposure (ms):'),2,0)
-        grid.addWidget( self.exposure_spinb   , 2,1)
-        grid.addWidget( self.exposure_slider  , 2,2 , 1,4)
-        self.layout.addLayout(grid)
-        self.layout.addWidget(self.view_layout)
+        self.layout.addWidget( self.view_layout )
         grid      = QGridLayout()
         grid.addWidget(self.button_acquire      , 0,0 , 1,3)
         grid.addWidget(QLabel('Number of frame'), 1,0)
@@ -154,23 +123,10 @@ class Preview(QWidget):
         self.camera.set_aoi(0,0, 1280,1024)
         self.camera.alloc()
 
-    def initColorDic(self):
-        self.colordic = {}
-        # --- jet-like cmap --- #
-        alpha     = 1.0
-        positions = [0.2, 0.5, 0.75, 1.0]
-        colors    = [[0,0,1.,alpha],[0,1.,1.,alpha],[1.,1.,0,alpha],[170/255,0,0,alpha]] #colors    = ['#0000ff', '#00ffff', '#ffff00', '#aa0000']
-        self.colordic['jet'] = pg.ColorMap(positions, colors)
-        # --- jet reversed cmap --- #
-        positions_r = [1-p_ for p_ in positions]
-        self.colordic['jet_r'] = pg.ColorMap(positions_r, colors)
-        # --- plasma cmap --- #
-        self.colordic['plasma'] = generatePgColormap('plasma')
-
     def initView(self):
-        # --- image  widget --- #
-        self.image_view     = pg.ImageView()
-        # --- plot layout --- #
+        self.image_widget = CameraDisplay(camera=self.camera, log=self.log)
+        self.image_view   = self.image_widget.image_view
+        # --- histogram --- #
         self.hist_layWidget = pg.GraphicsLayoutWidget()
         self.plot_hist      = self.hist_layWidget.addPlot()
         self.plot_hist.setXLink( self.image_view.getView() )
@@ -181,11 +137,13 @@ class Preview(QWidget):
         # ---  --- #
         self.data_hist = pg.PlotDataItem()
         self.plot_hist.addItem(self.data_hist)
+        # --- link histogram to image view --- #
+        self.image_widget.frame_updated.connect( self.updatePlotHistogram )
         # ---  --- #
-        self.image_view.setColorMap(self.colordic[self.cmap])
         self.image_view.setLevels(0,255)
-        self.hidePlotButtons()
         self.image_view.getHistogramWidget().item.setHistogramRange(0,255) #not working when update
+        self.image_view.ui.roiBtn.hide()
+        self.image_view.ui.menuBtn.hide()
         # ---  --- #
         self.image_view.setMinimumWidth(400)
         self.image_view.setMinimumHeight(200)
@@ -193,15 +151,8 @@ class Preview(QWidget):
         self.hist_layWidget.setMinimumHeight(100)
         # ---  --- #
         self.view_layout = QSplitter(PyQt5.QtCore.Qt.Vertical)
-        self.view_layout.addWidget(self.image_view)
+        self.view_layout.addWidget(self.image_widget)
         self.view_layout.addWidget(self.hist_layWidget)
-
-    def hideHistogram(self):
-        self.image_view.ui.histogram.hide()
-
-    def hidePlotButtons(self):
-        self.image_view.ui.roiBtn.hide()
-        self.image_view.ui.menuBtn.hide()
 
     def setFPS(self):
         self.fps = self.fps_input.value()
@@ -227,14 +178,8 @@ class Preview(QWidget):
         if not wasOn:
             self.camera.capture_video()
 
-    def update_image(self):
-        frame = self.camera.get_frame()
-        if type(frame) != type(None):
-            self.updatePlotHistogram(frame)
-            self.qlabl_max.setText( str(np.max(frame)) )
-            self.image_view.setImage(frame.T, autoHistogramRange=False, autoLevels=False)
-
-    def updatePlotHistogram(self, frame):
+    def updatePlotHistogram(self):
+        frame = self.image_widget.frame
         if self.normalise_hist:
             bckgrnd = np.mean(frame)
             frame  = frame-bckgrnd
@@ -261,10 +206,12 @@ class Preview(QWidget):
         if self.isOn:
             self.startStop_continuous_view()
         # ---  --- #
-        frame = self.camera.frame
-        if type(frame) != type(None):
+        try:
+            frame = self.camera.frame
             plt.imshow(frame, cmap=self.cmap)
             plt.show()
+        except:
+            pass
         # ---  --- #
         if wasOn:
             self.startStop_continuous_view()
@@ -298,59 +245,6 @@ class Preview(QWidget):
         # ---  --- #
         if wasOn:
             self.startStop_continuous_view()
-
-    def startStop_continuous_view(self):
-        if  self.isOn:
-            self.stop_continuous_view()
-            self.button_startstop.setStyleSheet("background-color: red")
-            self.button_nextFrame.setFlat(False)
-            self.button_nextFrame.setEnabled(True)
-        else:
-            self.start_continuous_view()
-            self.button_startstop.setStyleSheet("background-color: green")
-            self.button_nextFrame.setFlat(True)
-            self.button_nextFrame.setEnabled(False)
-
-    def start_continuous_view(self):
-        self.camera.capture_video()
-        if   True:
-            self.start_continuous_view_qtimer()
-        elif False:
-            self.start_continuous_view_qthread()
-        # ---  --- #
-        self.isOn = True
-
-    def stop_continuous_view(self):
-        self.camera.stop_video()
-        if   True:
-            self.stop_continuous_view_qtimer()
-        elif False:
-            self.stop_continuous_view_qthread()
-        # ---  --- #
-        self.isOn = False
-
-    def start_continuous_view_qthread(self):
-        # ---  --- #
-        self.thread = QThread()
-        self.thread.setTerminationEnabled(True)
-        # --- connect --- #
-        self.contview.moveToThread(self.thread)
-        self.thread.started.connect(self.contview.startFeed)
-        self.contview.newshot.connect(self.update_image)
-        self.contview.finished.connect(self.thread.quit)
-        # ---  --- #
-        self.thread.start()
-
-    def stop_continuous_view_qthread(self):
-        self.contview.stopFeed()
-
-    def start_continuous_view_qtimer(self):
-        # ---  --- #
-        self.timer.timeout.connect(self.update_image)
-        self.timer.start(1e3/self.fps) #ms
-
-    def stop_continuous_view_qtimer(self):
-        self.timer.stop()
 
 #########################################################################################################################
 # CODE

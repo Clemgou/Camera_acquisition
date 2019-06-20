@@ -16,10 +16,11 @@ from PyQt5.QtCore    import Qt, QThread, QTimer, QObject, pyqtSignal, pyqtSlot, 
 from PyQt5.QtGui     import QPainter
 
 
-import numpy as np
 import itertools, operator
+import numpy             as np
 import matplotlib.pyplot as plt
-import pyqtgraph as pg
+import pyqtgraph         as pg
+from   PIL               import Image
 
 
 from s_LogDisplay_class               import LogDisplay
@@ -248,6 +249,8 @@ class DCMeasurement(QWidget):
         dir_path = self.savefile.directory().absolutePath()
         os.chdir(dir_path)
         self.savefile_name.setText( filename[0] )
+        # --- set image count --- #
+        self.img_count = 0
         # --- restart processes --- #
         if self.fittingactivate.checkState() != 0:
             self.fittingtimer.start()
@@ -272,6 +275,10 @@ class DCMeasurement(QWidget):
                 coretxt += self.sepration+str(self.param_peak[i,1])
         f.write(coretxt)
         f.close()
+        # --- save coresponding frame as tif --- #
+        img_to_save = Image.fromarray( self.camera_view.frame )
+        img_to_save.save( self.savefile_name.text()+'_{0:03d}.tif'.format(self.img_count) )
+        self.img_count += 1
         # --- restart processes --- #
         if self.fittingactivate.checkState() != 0:
             self.fittingtimer.start()
@@ -464,21 +471,6 @@ class DCMeasurement(QWidget):
         self.gaussianfit.makeGaussianFit()
         # ---  --- #
         self.param_peak = self.gaussianfit.param
-
-
-
-    def acquireFrame(self):
-        wasOn = self.isOn
-        if self.isOn:
-            self.startStop_continuous_view()
-        # ---  --- #
-        frame = self.camera.frame
-        if type(frame) != type(None):
-            plt.imshow(frame, cmap=self.cmap)
-            plt.show()
-        # ---  --- #
-        if wasOn:
-            self.startStop_continuous_view()
 
     def singleShotFittingPlot(self):
         self.getParamFit()
