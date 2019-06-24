@@ -27,7 +27,7 @@ class QVLine(QFrame):
         super(QVLine, self).__init__()
         self.setFrameShape(QFrame.VLine)
         self.setFrameShadow(QFrame.Sunken)
-        
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 
 class GaussianFit():
@@ -48,6 +48,7 @@ class GaussianFit():
         self.max       = max_
         self.threshold = peakthreshold
         self.dic_span  = span_dic
+        self.maximums  = []
         # ---  --- #
         self.xdata = xdata
         self.ydata = ydata
@@ -56,6 +57,13 @@ class GaussianFit():
 
     def gaussian(self, x, x0,a,b):
         return a*np.exp(-b*(x-x0)**2)
+
+    def jac_gaussian(self, x ,x0,a,b):
+        jac = np.zeros([len(x), 3])
+        jac[:,0] = +2*(x-x0)*a*b*np.exp(-b*(x-x0)**2)
+        jac[:,1] = np.exp(-b*(x-x0)**2)
+        jac[:,2] = -a*(x-x0)**2*np.exp(-b*(x-x0)**2)
+        return jac
 
     def makeParam(self):
         self.param = np.ones([self.fit_nbr, 3])
@@ -85,10 +93,17 @@ class GaussianFit():
             #self.log.addText('Except in sumGaussian, parameter:'+str(param))
         return SUM
 
+    def jac_sumGaussian(self, x, *param):
+        n   = int(len(param)/3)
+        jac = np.zeros([len(x), 3*n])
+        for i in range(n):
+            jac[:,3*i:3*i+3] = self.jac_gaussian(x, *param[3*i:3*(i+1)])
+        return jac
+
     def fitAlltogether(self):
-        param_guess = self.param.reshape([self.param.shape[0]*3])
+        param_guess   = self.param.reshape([self.param.shape[0]*3])
         try:
-            popt, pcov = curve_fit(self.sumGaussian, self.xdata, self.ydata, p0=param_guess)
+            popt, pcov = curve_fit(self.sumGaussian, self.xdata, self.ydata, p0=param_guess, jac=self.jac_sumGaussian)
             self.param = popt.reshape([self.fit_nbr,3])
         except:
             err_msg = 'Error: in fitAlltogether. Something is wrong with curve_fit implementation.\nparam_guess: {}'.format(param_guess)
@@ -97,14 +112,15 @@ class GaussianFit():
     def fitPeakByPeak(self):
         KEYS = list( self.dic_span.keys() )
         N    = len(KEYS)
-        self.param = np.zeros([N,3])
+        self.param    = np.zeros([N,3])
+        self.maximums = np.ones(N)
         for i in range(N):
             region = self.dic_span[KEYS[i]].span.getRegion()
             m , M  = int(np.min(region)), int(np.max(region))
-            x0,a,b = np.mean( self.xdata[m:M] ), np.max(self.xdata[m:M]) , 1.#np.abs(M-m)/2.
-            popt, pcov = curve_fit(self.gaussian, self.xdata[m:M], self.ydata[m:M], p0=[x0, a, b])
+            x0,a,b = np.mean( self.xdata[m:M] ), np.max(self.ydata[m:M]) , 1.#np.abs(M-m)/2.
+            self.maximums[i] = a
             try:
-                #popt, pcov = curve_fit(self.gaussian, self.xdata[m:M], self.ydata[m:M], p0=[x0, a, b])
+                popt, pcov = curve_fit(self.gaussian, self.xdata[m:M], self.ydata[m:M], p0=[x0, a, b], method='lm', jac=self.jac_gaussian)
                 self.param[i] = popt
             except:
                err_msg = 'Error: in fitPeakByPeak. Something is wrong with curve_fit implementation.\nparam_guess: {}'.format(self.param)

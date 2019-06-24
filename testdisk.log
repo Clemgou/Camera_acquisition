@@ -1,0 +1,48 @@
+
+
+Mon Jun 24 13:40:57 2019
+Command line: TestDisk
+
+TestDisk 7.0, Data Recovery Utility, April 2015
+Christophe GRENIER <grenier@cgsecurity.org>
+http://www.cgsecurity.org
+OS: Linux, kernel 5.1.7-arch1-1-ARCH (#1 SMP PREEMPT Tue Jun 4 15:47:45 UTC 2019) x86_64
+Compiler: GCC 8.2
+Compilation date: 2018-10-03T23:07:17
+ext2fs lib: 1.45.2, ntfs lib: libntfs-3g, reiserfs lib: 0.3.0.5, ewf lib: none, curses lib: ncurses 6.1
+/dev/sda: LBA, HPA, LBA48, DCO support
+/dev/sda: size       1953525168 sectors
+/dev/sda: user_max   1953525168 sectors
+/dev/sda: native_max 1953525168 sectors
+/dev/sda: dco        1953525168 sectors
+Warning: can't get size for Disk /dev/mapper/control - 0 B - 0 sectors, sector size=512
+Hard disk list
+Disk /dev/sda - 1000 GB / 931 GiB - CHS 121601 255 63, sector size=512 - WDC WD10JPVX-22JC3T0, S/N:WD-WX61A25FESTT, FW:01.01A01
+
+Partition table type (auto): EFI GPT
+Disk /dev/sda - 1000 GB / 931 GiB - WDC WD10JPVX-22JC3T0
+Partition table type: EFI GPT
+
+Interface Advanced
+hdr_size=92
+hdr_lba_self=1
+hdr_lba_alt=1953525167 (expected 1953525167)
+hdr_lba_start=34
+hdr_lba_end=1953525134
+hdr_lba_table=2
+hdr_entries=128
+hdr_entsz=128
+ 1 P Unknown                     2048       4095       2048
+ 2 P Unknown                     4096  104861695  104857600
+ 3 P Unknown                104861696 1945087999 1840226304
+ 4 P Linux Swap            1945088000 1953525134    8437135
+gpt_change_part_type
+Change partition type:
+ 2 P EFI System                  4096  104861695  104857600
+Change partition type:
+ 2 P FAT32                       4096  104861695  104857600
+
+FAT: Can't list files, bad cluster size.
+Directory /
+
+TestDisk exited normally.
