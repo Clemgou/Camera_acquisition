@@ -139,6 +139,9 @@ class Camera:
         ueye.is_AOI(self.cam, ueye.IS_AOI_IMAGE_GET_AOI, rect_aoi, ueye.sizeof(rect_aoi))
         # ---  --- #
         x, y, width, height = rect_aoi.s32X.value, rect_aoi.s32Y.value, rect_aoi.s32Width.value, rect_aoi.s32Height.value
+        # ---  --- #
+        #self.frame_buffer = np.zeros([height,width])
+        #self.frame_color_buffer = np.zeros([height,width,3])
         return x, y, width, height
 
     def set_aoi(self, x, y, width, height):
@@ -223,6 +226,13 @@ class Camera:
         self.unlockBuffer()
         return self.frame
 
+    def from_1d_to_2d_image(self, img_data):
+        channels = int((7 + self.bpp) / 8) # with self.bpp from alloc with get_bits_per_pixel( color_mode )
+        if channels > 1:
+            return np.reshape(img_data, (self.frame_height, self.frame_width, channels))
+        else:
+            return np.reshape(img_data, (self.frame_height, self.frame_width))
+
     def capture_video(self, wait=False):
         wait_param = ueye.IS_WAIT if wait else ueye.IS_DONT_WAIT
         return ueye.is_CaptureVideo(self.cam, wait_param)
@@ -233,13 +243,6 @@ class Camera:
     def freeze_video(self, wait=False):
         wait_param = ueye.IS_WAIT if wait else ueye.IS_DONT_WAIT
         return ueye.is_FreezeVideo(self.cam, wait_param)
-
-    def from_1d_to_2d_image(self, img_data):
-        channels = int((7 + self.bpp) / 8) # with self.bpp from alloc with get_bits_per_pixel( color_mode )
-        if channels > 1:
-            return np.reshape(img_data, (self.frame_height, self.frame_width, channels))
-        else:
-            return np.reshape(img_data, (self.frame_height, self.frame_width))
 
     def set_colormode(self):
         self.check(ueye.is_SetColorMode(self.cam, self.colorMode), 'is_SetColorMode' )

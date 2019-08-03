@@ -220,7 +220,10 @@ class SpanObject(pg.GraphicsWidget):
         self.isAssigned = bool_
 
     def updateTextPos(self):
-        self.label.setPos( 0.  ,   np.mean(self.span.getRegion())+self.text_height*0.2  )
+        if   self.orient=='horizontal':
+            self.label.setPos( 0.  ,   np.mean(self.span.getRegion())+self.text_height*0.2  )
+        elif self.orient=='vertical':
+            self.label.setPos( np.mean(self.span.getRegion())-np.abs(self.text_width), 0  )
         # --- feed back --- #
         #self.log.addText( 'TEXt POSITION: {}'.format(self.label.pos()) )
 
@@ -292,7 +295,7 @@ class PeakPlot(pg.PlotItem):
         # ---  -- #
         try:
             data = np.array(self.peakdata)
-            data = data/np.max(data)
+            #data = data/np.max(data)
             self.plot.setData( data )
         except:
             err_msg  = 'Issues with data, data: {}'.format(data)

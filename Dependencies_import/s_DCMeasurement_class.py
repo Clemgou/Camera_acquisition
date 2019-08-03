@@ -124,7 +124,7 @@ class DCMeasurement(QWidget):
         self.normalise_hist = QComboBox()
         self.normalise_hist.addItem('raw')
         self.normalise_hist.addItem('normalise')
-        self.normalise_hist.setCurrentIndex(1)
+        self.normalise_hist.setCurrentIndex(0)
         self.nbrpeak = QSpinBox()
         self.nbrpeak.setRange(1, 20)
         self.nbrpeak.setValue(2)
@@ -138,6 +138,7 @@ class DCMeasurement(QWidget):
         self.nbrpeak.valueChanged.connect(self.updatePlots)
         self.histrealtime.stateChanged.connect( self.setLinkToCameraTimer )
         # --- default --- #
+        self.setModeFitting()
         plot_viewbox.enableAutoRange(pg.ViewBox.YAxis, enable=True)
         if self.normalise:
             self.plot_hist.setYRange(0, 1)
@@ -181,6 +182,7 @@ class DCMeasurement(QWidget):
         self.save_count        = QSpinBox()
         self.save_count.setRange(0, 1e4)
         self.save_count.setValue(0)
+        self.button_test       = QPushButton('TEST')
         # ---  --- #
         self.fittingtimer.setInterval(self.frqcyfitting.value())
         # --- connections --- #
@@ -233,6 +235,7 @@ class DCMeasurement(QWidget):
             newspan.span.sigRegionChangeFinished.connect(self.updatePowerPeak)
             self.dic_spanfitting[newspan.name] = newspan
             self.plot_hist.addItem( newspan.span )
+            self.plot_hist.addItem( newspan.label )
         self.gaussianfit.setSpanDictionary( self.dic_spanfitting )
         # ---  --- #
         self.power_peak = np.zeros(self.nbrpeak.value())
@@ -254,9 +257,14 @@ class DCMeasurement(QWidget):
     def removeAllSpans(self):
         KEYS = list( self.dic_spanfitting.keys() )
         for key in KEYS:
-            span_to_remove = self.dic_spanfitting[key]
-            self.plot_hist.removeItem( span_to_remove.span )
+            self.plot_hist.removeItem( self.dic_spanfitting[key].span )
+            self.dic_spanfitting[key].setParent(None)
             del self.dic_spanfitting[key]
+
+    def removeAllLabels(self):
+        KEYS = list( self.dic_spanfitting.keys() )
+        for key in KEYS:
+            self.plot_hist.removeItem( self.dic_spanfitting[key].label )
 
     def addDataToFile(self):
         # --- stop timers to avoid over load --- #
@@ -289,6 +297,7 @@ class DCMeasurement(QWidget):
             header = ''
             for i in range(N):
                 header += 'Peak_measured_{}'.format(i)+self.sepration
+                header += 'Peak_power_{}'.format(i)   +self.sepration
                 header += 'Peak_fitted_{}'.format(i)  +self.sepration
             f.write(header)
             f.close()
@@ -305,7 +314,10 @@ class DCMeasurement(QWidget):
         f.close()
         # --- save coresponding frame as tif --- #
         img_to_save = Image.fromarray( self.camera_view.frame )
-        img_to_save.save( self.savefile_name.text()+'_{0:03d}.tif'.format(self.img_count) )
+        if self.savefile_name.text()[:-4] == '.':
+            img_to_save.save( self.savefile_name.text()[:-4]+'_{0:03d}.tif'.format(self.img_count) )
+        else:
+            img_to_save.save( self.savefile_name.text()     +'_{0:03d}.tif'.format(self.img_count) )
         self.img_count += 1
         # ---  --- #
         self.saving_state.setText('Saved No:')
@@ -449,6 +461,7 @@ class DCMeasurement(QWidget):
             self.button_makefit.setEnabled(False)
             self.button_makefit.setFlat(True)
             self.fittingactivate.setCheckState(2)
+            self.removeAllLabels()
             self.removeAllSpans()
             self.power_peak = []
         elif ind == 1:
@@ -568,13 +581,8 @@ class DCMeasurement(QWidget):
         if type(frame) == type(None):
             return None
         # ---  --- #
-        ydata = np.sum(frame,axis=0)
-        self.data_hist.setData(ydata)
-        return None
         # ---  --- #
-        frame = frame-np.mean(frame)
         ydata = np.sum(frame,axis=0)/frame.shape[0]
-        ydata = ydata + np.abs(np.min([0, np.min(ydata)]))
         if self.normalise:
             try:
                 ydata = ydata/np.max(ydata)

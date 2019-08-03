@@ -23,9 +23,10 @@ import pyqtgraph as pg
 
 
 from s_LogDisplay_class               import LogDisplay
-from s_ToolObjects_class              import GaussianFit, SpanObject, PeakPlot
+from s_ToolObjects_class              import GaussianFit, SpanObject, PeakPlot, QHLine
 from s_CameraDisplay_class            import CameraDisplay
 from s_SimuCamera_class               import SimuCamera
+from s_Camera_class                   import Camera
 
 #########################################################################################################################
 # FUNCTIONS
@@ -44,10 +45,11 @@ class PhaseNetworkElements(QWidget):
         # --- default --- #
         self.fps       = fps
         self.cmap      = 'jet'
-        self.normalise = True
         self.sepration = ' '
         self.param_peak= [] # a N x 3 array where each line is [x0, a, b] the parameter of the fit, N being the number of peaks.
         self.dicspan   = {}
+        self.postprocss_func = None
+        self.procssfunc_default = True
         # --- main attriute --- #
         self.camera    = camera
         if not self.camera.isCameraInit:
@@ -94,61 +96,77 @@ class PhaseNetworkElements(QWidget):
     def initView(self):
         self.camera_view     = CameraDisplay(camera=self.camera, log=self.log)
         # ---  --- #
-        self.camera_view.image_view.setMinimumWidth(200)
+        self.camera_view.image_view.setMinimumWidth(100)
         self.camera_view.image_view.setMinimumHeight(200)
 
     def initParameterZone(self):
         self.paramFrame = QFrame()
+        self.paramFrame.setToolTip('Frame where we control the main parameter for the data sampling.')
         self.paramFrame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         self.paramFrame.setLineWidth(3)
         self.paramFrame.setMidLineWidth(1)
         # --- widgets --- #
-        self.normalise_hist = QComboBox()
-        self.normalise_hist.addItem('raw')
-        self.normalise_hist.addItem('normalise')
-        self.normalise_hist.setCurrentIndex(1)
+        self.histogram_data = QComboBox()
+        self.histogram_data.addItem('raw')
+        self.histogram_data.addItem('remove backgrnd')
+        self.histogram_data.addItem('normalise')
+        self.histogram_data.setCurrentIndex(0)
         self.histrealtime   = QCheckBox()
         self.histrealtime.setTristate(False)
         self.histrealtime.setCheckState(2)
         self.setLinkToCameraTimer()
-        self.button_save   = QPushButton('Save Plot data')
+        self.button_save   = QPushButton('Save sampling data')
+        self.button_save.setToolTip('Save the plots in the milti-plot window in a txt file such that each line corresponds to the y-data. Moreover we save the total intensity.')
         self.savefile      = QFileDialog(self)
         self.savefile_name = QLabel('Select a file')
         self.savefile_name.setWordWrap(True)
-        self.choosedirectory  = QPushButton('&New file')
+        self.choosedirectory  = QPushButton('&Change file')
+        self.postprocss    = QComboBox()
+        self.postprocss.addItem('Max peak')
+        self.postprocss.addItem('Sum area span')
         # --- connections --- #
         self.choosedirectory.clicked.connect(self.setNewSaveFile)
         self.button_save.clicked.connect( self.saveDataFromMultiplot )
-        self.normalise_hist.currentIndexChanged.connect(self.setModeFitting)
         self.histrealtime.stateChanged.connect( self.setLinkToCameraTimer )
+        self.histogram_data.currentIndexChanged.connect( self.setHistgrmPlotRange )
+        self.postprocss.currentIndexChanged.connect( self.setPostProcessFunction )
         # --- make layout --- #
+        label_1 = QLabel('Histogram data: ')
+        label_1.setWordWrap(True)
+        label_1.setToolTip('Set what transformation we operate from the image data to the histogram data.\n"raw" means we integrate over the Y-axis and divide by the number of line.\n"normalise" like "raw" but we normalise to the maximum afterward.')
+        label_2 = QLabel('Histogram in continuous mode: ')
+        label_2.setWordWrap(True)
+        label_2.setToolTip('When unchecked, stop the updating of the histogram. In other words, allow to stop the histogram without stopping the video image.')
+        label_3 = QLabel('Sampling post-processing: ')
+        label_3.setWordWrap(True)
+        label_3.setToolTip('The post-processing refer to the data processing from the vertivcal histogram of the image.')
         grid    = QGridLayout()
-        grid.addWidget(QLabel('Mode for fitting: ')      , 0,0)
-        grid.addWidget( self.normalise_hist              , 0,1)
-        grid.addWidget(QLabel('Histogram in continuous mode: ')       , 2,0)
-        grid.addWidget( self.histrealtime                , 2,1)
-        grid.addWidget( self.choosedirectory  , 3,0)
-        grid.addWidget(self.savefile_name     , 3,1)
-        grid.addWidget( self.button_save      , 4,0 , 1,2)
+        grid.addWidget(label_1               , 1,0)
+        grid.addWidget( self.histogram_data  , 1,1)
+        grid.addWidget(label_2               , 0,0)
+        grid.addWidget( self.histrealtime    , 0,1)
+        grid.addWidget(label_3               , 2,0)
+        grid.addWidget(self.postprocss       , 2,1)
+        grid.addWidget( QHLine()             , 3,0 , 1,2)
+        grid.addWidget( self.button_save     , 4,0 , 1,2)
+        grid.addWidget( self.choosedirectory , 5,0)
+        grid.addWidget(self.savefile_name    , 5,1)
         self.paramFrame.setLayout( grid )
 
     def initVertHistogram(self):
         self.plot_hist    = pg.PlotWidget()
         self.plot_hist.setMinimumHeight(600)
-        self.plot_hist.setMinimumWidth(200)
+        self.plot_hist.setMinimumWidth(100)
         plot_viewbox      = self.plot_hist.getViewBox()
         plot_viewbox.invertX(True)
         self.plot_hist.showAxis('right')
         self.plot_hist.hideAxis('left')
+        self.plot_hist.showGrid(x=True)
         plot_viewbox.setAspectLocked(False)
         plot_viewbox.enableAutoRange(pg.ViewBox.YAxis, enable=True)
         # --- measured data --- #
         self.data_hist = pg.PlotDataItem()
         self.plot_hist.addItem(self.data_hist)
-        # --- default --- #
-        self.plot_hist.setXRange(0, 255)
-        if self.normalise:
-            self.plot_hist.setXRange(0, 1)
         # --- widgets --- #
         self.spanNumber     = QSpinBox()#QPushButton('add new span')
         self.spanNumber.setMaximum(20)
@@ -156,6 +174,7 @@ class PhaseNetworkElements(QWidget):
         self.spanNumber.valueChanged.connect( self.makeSpans )
         # --- make layout --- #
         self.histogFrame = QFrame()
+        self.histogFrame.setToolTip('Vertical histogram of the image. We integrated over the Y-axis of the image.')
         layout = QGridLayout()
         layout.addWidget(QLabel('Span Number:') , 0,0)
         layout.addWidget( self.spanNumber       , 0,1)
@@ -170,21 +189,30 @@ class PhaseNetworkElements(QWidget):
         self.dicmultiplot = {}
         self.samplingPtNbr  = QLabel()
         # ---  --- #
+        self.plot_max = PeakPlot(name='plot_max', span=None, log=self.log)
+        #self.dicmultiplot[self.plot_max.name] = [self.plot_max]
+        # ---  --- #
         self.spanNumber.valueChanged.connect( self.updateMultiplots )
         self.samplingtime.valueChanged.connect( self.updatePtNbrLabel )
         self.camera_view.fps_input.valueChanged.connect( self.updatePtNbrLabel )
         # --- make layout --- #
+        label_1 = QLabel('Sampling time (s): ')
+        label_1.setWordWrap(True)
+        label_2 = QLabel('(s) --> pts nbr:')
+        label_2.setWordWrap(True)
         self.multiplotFrame = QFrame()
+        self.multiplotFrame.setToolTip('Multiplot frame. Each plot correspond to the post-processed data sampling of the corresponding span number.')
         layout = QGridLayout()
-        layout.addWidget(QLabel('Sampling duration (s): ') , 0,0)
+        layout.addWidget(label_1 , 0,0)
         layout.addWidget(self.samplingtime                 , 0,1)
-        layout.addWidget(QLabel('(s) --> nbr of pts:')     , 0,2)
+        layout.addWidget(label_2     , 0,2)
         layout.addWidget(self.samplingPtNbr                , 0,3)
         layout.addWidget(self.multi_plot                   , 1,0 , 1,4)
         self.multiplotFrame.setLayout( layout )
 
     def initLissajousPlot(self):
         self.lissajousFrame = QFrame()
+        self.lissajousFrame.setToolTip('Lissajous plot. We plot the post processed intensities as expressed below the graph.')
         self.lissajousFrame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
         self.lissajousFrame.setLineWidth(3)
         self.lissajousFrame.setMidLineWidth(1)
@@ -198,21 +226,25 @@ class PhaseNetworkElements(QWidget):
         #self.data_lissjs.setSymbol('o')
         self.plot_lissjs.addItem(self.data_lissjs)
         # ---  --- #
-        lissjs_viewbox.setRange(xRange=(0,1), yRange=(0,1))
+        lissjs_viewbox.setRange(xRange=(-1,+1), yRange=(-1,+1))
         self.plot_xaxis  = QComboBox()
         self.plot_yaxis  = QComboBox()
         self.makeLissajousAxisSelection()
         self.button_plot_lissajs = QPushButton('Plot')
         self.button_plot_lissajs.setCheckable(True)
         # --- make layout --- #
+        label_equation = QLabel('-    i = (I/I_tot)\n- x,y = [i-(i_Max+i_min)/2]/(i_Max-i_min)/2')
+        label_equation.setWordWrap(True)
         layout = QGridLayout()
-        layout.addWidget( QLabel('X axis'), 0,1)
-        layout.addWidget( QLabel('Y axis'), 0,2)
+        layout.addWidget( QLabel('X axis') , 0,1)
+        layout.addWidget( QLabel('Y axis') , 0,2)
         layout.addWidget( QLabel('Plot : '), 1,0)
         layout.addWidget( self.plot_xaxis  , 1,1)
         layout.addWidget( self.plot_yaxis  , 1,2)
         layout.addWidget( self.button_plot_lissajs, 2,0 , 1,3)
-        layout.addWidget( self.plot_lissjs, 3,0 , 1,3)
+        layout.addWidget( self.plot_lissjs , 3,0 , 1,3)
+        layout.addWidget( QHLine()         , 4,0 , 1,3)
+        layout.addWidget( label_equation   , 5,0 , 1,3)
         self.lissajousFrame.setLayout( layout )
 
     def setNewSaveFile(self):
@@ -221,21 +253,38 @@ class PhaseNetworkElements(QWidget):
         self.camera_view.stop_continuous_view()
         # ---  --- #
         filename = self.savefile.getSaveFileName(None)
+        if filename == '':
+            # --- restart processes --- #
+            if wasOn:
+                self.camera_view.start_continuous_view()
+            return False
         dir_path = self.savefile.directory().absolutePath()
         os.chdir(dir_path)
         self.savefile_name.setText( filename[0] )
         # --- restart processes --- #
         if wasOn:
             self.camera_view.start_continuous_view()
+        # ---  --- #
+        return True
 
     def saveDataFromMultiplot(self):
-        # --- stop timers to avoid over load --- #
+        # --- stop timers to avoid over load --- #  # we stop the process because it does not work while timer is running
         wasOn = self.camera_view.isOn
         self.camera_view.stop_continuous_view()
-        # ---  --- #
+        # --- check if there are spans --- #
         if self.spanNumber.value() == 0:
+            # --- restart processes --- #
+            if wasOn:
+                self.camera_view.start_continuous_view()
             return None
-        # ---  --- #
+        # --- set file name --- #
+        hasWorked = self.setNewSaveFile()
+        if not hasWorked:
+            # --- restart processes --- #
+            if wasOn:
+                self.camera_view.start_continuous_view()
+            return None
+        # ---  open file save --- #
         filename = self.savefile_name.text()
         try:
             f = open(filename, 'w+')
@@ -243,12 +292,16 @@ class PhaseNetworkElements(QWidget):
             err_msg  = 'Error: in saveDataFromMultiplot, not able to open file.'
             err_msg += '\nFilename is: {}'.format(filename)
             self.log.addText( err_msg )
-        # ---  --- #
+        # --- make save --- #
         min_len   = np.inf
         data_list = []
-        for key in self.dicmultiplot:
+        for key in self.dicmultiplot: # adding data from each plot in multiplot view
             data_list.append( self.dicmultiplot[key][0].plot.yData )
             min_len = np.min( [min_len, len(data_list[-1])] )
+        # --- adding the data fot the total intensity --- #
+        data_list.append( self.plot_max.plot.yData )
+        min_len = np.min( [min_len, len(data_list[-1])] )
+        # ---  --- #
         min_len = int(min_len)
         if len(data_list) == 0:
             return None
@@ -317,6 +370,7 @@ class PhaseNetworkElements(QWidget):
             for i in range(n_current-n):
                 self.removeSpan()
         self.makeLissajousAxisSelection()
+        self.setSameYAxisMultiplots()
 
     def addPlot(self, span):
         N = len( list(self.dicspan.keys()) )
@@ -346,6 +400,14 @@ class PhaseNetworkElements(QWidget):
         # ---  --- #
         del self.dicmultiplot['plot_{}'.format(span.name)]
         span.setAssigned(False)
+
+    def setSameYAxisMultiplots(self):
+        key_init = list(self.dicmultiplot.keys())[0]
+        common_viewBox = self.dicmultiplot[key_init][0].getViewBox()
+        common_viewBox.enableAutoRange(pg.ViewBox.YAxis, enable=True)
+        for key in self.dicmultiplot:
+            plot = self.dicmultiplot[key][0]
+            plot.setYLink(common_viewBox)
 
     def setLinkToCameraTimer(self):
         if   self.histrealtime.checkState() == 0:
@@ -389,28 +451,47 @@ class PhaseNetworkElements(QWidget):
         elif ind == 1:
             self.gaussianfit.setMode('pbp')
 
+    def setPostProcessFunction(self):
+        ind = self.postprocss.currentIndex()
+        if   ind == 0:
+            func = eval("lambda x_data: np.max(x_data)")
+            self.postprocss_func = func
+        elif ind == 1:
+            func = eval("lambda x_data: np.sum(x_data)")
+            self.postprocss_func = func
+        return None
+
     def setFittingRate(self):
         self.fittingtimer.setInterval(1e3/self.frqcyfitting.value())
 
-    def setModeFitting(self):
-        ind = self.normalise_hist.currentIndex()
-        if   ind == 0:
-            self.normalise = False
-            self.plot_hist.setXRange(0, 255)
-        elif ind == 1:
-            self.normalise = True
+    def setHistgrmPlotRange(self):
+        ind = self.histogram_data.currentIndex()
+        if   ind == 0 or ind == 1:
+            self.plot_hist.getViewBox().enableAutoRange(pg.ViewBox.XAxis, enable=True)
+        elif ind == 2:
             self.plot_hist.setXRange(0, 1.)
-        # ---  --- #
-        self.updatePlotHistogram()
+
+    def postProcessLissajous(self, xy_data):
+        Max_ = np.max(xy_data)
+        min_ = np.min(xy_data)
+        A    = (Max_ + min_)*0.5
+        B    = (Max_ - min_)*0.5
+        return (xy_data-A)/B
 
     def updatePlotHistogram(self):
         frame = self.camera_view.frame
         if type(frame) == type(None):
             return None
-        frame = frame-np.mean(frame)
-        ydata = np.sum(frame,axis=0)/frame.shape[0]
-        ydata = ydata + np.abs(np.min([0, np.min(ydata)]))
-        if self.normalise:
+        # --- mode data --- #
+        ind = self.histogram_data.currentIndex()
+        if   ind == 0: # raw
+            ydata = np.sum(frame,axis=0)/frame.shape[0]
+        elif ind == 1: # remove background
+            frame = frame-np.mean(frame)
+            ydata = np.sum(frame,axis=0)/frame.shape[0]
+            ydata = ydata + np.abs(np.min([0, np.min(ydata)]))
+        elif ind == 2: # normalise
+            ydata = np.sum(frame,axis=0)/frame.shape[0]
             ydata = ydata/np.max(ydata)
         # --- plot data --- #
         self.data_hist.setData( ydata, np.arange(len(ydata)) )
@@ -418,11 +499,39 @@ class PhaseNetworkElements(QWidget):
         self.updateMultiplots()
 
     def updateMultiplots(self):
+        if type(self.postprocss_func) == type(None):
+            self.setPostProcessFunction()
+        # ---  --- #
+        sum_max_peak = 0
+        data = self.data_hist.xData
         for key in self.dicmultiplot:
             plot = self.dicmultiplot[key][0]
-            plot.setFullData( self.data_hist.xData ) #!! indeed since the histogram is vertical, the data are in the x axis !!
             plot.setLengthMax( int(self.samplingtime.value()*self.camera_view.fps) )
-            plot.updatePlot()
+            # ---  --- #
+            region = plot.span.span.getRegion()
+            m , M  = int(np.min(region)), int(np.max(region))
+            err_msg  = ''
+            cond_1 = type(data) != type(None) and m != M
+            cond_2 = len(data) >= m or len(data) >= M
+            cond_3 = len(data[m:M]) != 0
+            if cond_1 and cond_2 and cond_3:
+                try:
+                    new_val = self.postprocss_func(data[m:M])# np.max(data[m:M])
+                    plot.addDataElement( new_val )
+                except:
+                    err_msg += 'Error: in updatePlot for object PeakPlot: '+plot.name
+                    err_msg += '\nIssue with: self.addDataElement( np.max(self.data[m:M]) ),'
+                    err_msg += '\nsample: {}'.format(self.data[m:M])
+            else:
+                err_msg += '\nOne of the following condition is unsatisfied:\n \
+                type(data) != type(None) and m != M: {0}\n \
+                len(data) >= m or len(data) >= M: {1}\n \
+                len(data[m:M]) != 0: {2}'.format(cond_1,cond_2,cond_3)
+                self.log.addText( err_msg )
+            # ---  --- #
+            sum_max_peak += plot.peakdata[-1]
+        self.plot_max.setLengthMax( int(self.samplingtime.value()*self.camera_view.fps) )
+        self.plot_max.addDataElement(sum_max_peak)
         # ---  --- #
         if self.button_plot_lissajs.isChecked():# if self.doLissajous:
             self.updateLissajousPlot()
@@ -440,9 +549,14 @@ class PhaseNetworkElements(QWidget):
             return None
         xdata     = xplot.plot.yData
         ydata     = yplot.plot.yData
+        max_data  = self.plot_max.plot.yData
         if type(xdata) != type(None) and type(ydata) != type(None):
-            n = np.min( [len(xdata), len(ydata)] )
-            self.data_lissjs.setData( xdata[-n:], ydata[-n:] )
+            n = np.min( [len(xdata), len(ydata), len(max_data)] )
+            xdata = xdata[-n:]/max_data[-n:]
+            ydata = ydata[-n:]/max_data[-n:]
+            xdata = self.postProcessLissajous(xdata)
+            ydata = self.postProcessLissajous(ydata)
+            self.data_lissjs.setData( xdata, ydata )
 
     def updatePtNbrLabel(self):
         self.samplingPtNbr.setText( str(self.samplingtime.value()*self.camera_view.fps) )

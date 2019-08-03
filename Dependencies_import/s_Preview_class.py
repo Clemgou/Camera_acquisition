@@ -103,7 +103,8 @@ class Preview(QWidget):
         # --- layout --- #
         self.layout.addWidget( self.view_layout )
         grid      = QGridLayout()
-        grid.addWidget(self.button_acquire      , 0,0 , 1,3)
+        grid.addWidget(self.histogram_mode      , 0,0)
+        grid.addWidget(self.button_acquire      , 0,1 , 1,2)
         grid.addWidget(QLabel('Number of frame'), 1,0)
         grid.addWidget(self.movie_frameNbre     , 1,1)
         grid.addWidget(self.button_acq_movie    , 1,2)
